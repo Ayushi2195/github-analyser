@@ -1,23 +1,281 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>GitHub Repo Analyzer</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GitHub Repository Analyzer</title>
     <style>
-        body { font-family: Arial, sans-serif; max-width: 800px; margin: 50px auto; padding: 20px; }
-        input[type="text"] { width: 70%; padding: 10px; font-size: 16px; }
-        button { padding: 10px 20px; font-size: 16px; background: #2ea44f; color: white; border: none; cursor: pointer; }
-        .report { margin-top: 30px; border: 1px solid #ddd; padding: 20px; border-radius: 8px; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #0d1117;
+            color: #e6edf3;
+            min-height: 100vh;
+        }
+
+        header {
+            background: #161b22;
+            border-bottom: 1px solid #30363d;
+            padding: 20px 40px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        header h1 {
+            font-size: 22px;
+            font-weight: 700;
+            color: #58a6ff;
+        }
+
+        header span { font-size: 28px; }
+
+        .container {
+            max-width: 960px;
+            margin: 40px auto;
+            padding: 0 20px;
+        }
+
+        .search-box {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 32px;
+        }
+
+        .search-box p {
+            color: #8b949e;
+            margin-bottom: 16px;
+            font-size: 15px;
+        }
+
+        .input-row {
+            display: flex;
+            gap: 12px;
+        }
+
+        .input-row input {
+            flex: 1;
+            padding: 12px 16px;
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            color: #e6edf3;
+            font-size: 15px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .input-row input:focus {
+            border-color: #58a6ff;
+        }
+
+        .input-row input::placeholder { color: #484f58; }
+
+        .btn {
+            padding: 12px 24px;
+            background: #238636;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+            white-space: nowrap;
+        }
+
+        .btn:hover { background: #2ea043; }
+        .btn:disabled { background: #484f58; cursor: not-allowed; }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 40px;
+            color: #8b949e;
+        }
+
+        .loading .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid #30363d;
+            border-top-color: #58a6ff;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin: 0 auto 16px;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .report-container {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        .report-header {
+            background: #1f2937;
+            padding: 16px 24px;
+            border-bottom: 1px solid #30363d;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .report-header span { font-size: 20px; }
+        .report-header h2 { font-size: 16px; color: #58a6ff; font-weight: 600; }
+
+        .report-body {
+            padding: 32px;
+            line-height: 1.75;
+        }
+
+        /* Markdown styling */
+        .report-body h1, .report-body h2, .report-body h3 {
+            color: #58a6ff;
+            margin: 28px 0 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #30363d;
+        }
+
+        .report-body h1 { font-size: 24px; }
+        .report-body h2 { font-size: 20px; }
+        .report-body h3 { font-size: 16px; color: #79c0ff; border-bottom: none; }
+
+        .report-body p { margin-bottom: 14px; color: #c9d1d9; }
+
+        .report-body ul, .report-body ol {
+            margin: 12px 0 16px 24px;
+            color: #c9d1d9;
+        }
+
+        .report-body li { margin-bottom: 6px; }
+
+        .report-body code {
+            background: #0d1117;
+            color: #f97583;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+        }
+
+        .report-body pre {
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            padding: 16px;
+            overflow-x: auto;
+            margin: 16px 0;
+        }
+
+        .report-body pre code {
+            background: none;
+            color: #e6edf3;
+            padding: 0;
+        }
+
+        .report-body strong { color: #e6edf3; }
+
+        .report-body table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 16px 0;
+        }
+
+        .report-body th {
+            background: #0d1117;
+            color: #58a6ff;
+            padding: 10px 14px;
+            text-align: left;
+            border: 1px solid #30363d;
+        }
+
+        .report-body td {
+            padding: 10px 14px;
+            border: 1px solid #30363d;
+            color: #c9d1d9;
+        }
+
+        .report-body tr:nth-child(even) { background: #0d1117; }
+
+        .report-body blockquote {
+            border-left: 3px solid #58a6ff;
+            padding-left: 16px;
+            color: #8b949e;
+            margin: 16px 0;
+        }
+
+        .error-box {
+            background: #2d1214;
+            border: 1px solid #f85149;
+            border-radius: 8px;
+            padding: 16px 20px;
+            color: #f85149;
+            margin-top: 20px;
+        }
     </style>
 </head>
 <body>
-    <h1>🔍 GitHub Repository Analyzer</h1>
-    <form method="POST" action="/analyze/">
-        {% csrf_token %}
-        <input type="text" name="repo_url" placeholder="https://github.com/owner/repo" required>
-        <button type="submit">Analyze</button>
-    </form>
-    {% if report %}
-        <div class="report">{{ report|safe }}</div>
+
+<header>
+    <span>🔍</span>
+    <h1>GitHub Repository Analyzer</h1>
+</header>
+
+<div class="container">
+    <div class="search-box">
+        <p>Enter any public GitHub repository URL to generate an AI-powered analysis report.</p>
+        <form method="POST" action="/analyze/" onsubmit="showLoading()">
+            {% csrf_token %}
+            <div class="input-row">
+                <input
+                    type="text"
+                    name="repo_url"
+                    placeholder="https://github.com/owner/repository"
+                    required
+                    value="{{ repo_url|default:'' }}"
+                >
+                <button type="submit" class="btn" id="analyzeBtn">⚡ Analyze</button>
+            </div>
+        </form>
+    </div>
+
+    <div class="loading" id="loadingDiv">
+        <div class="spinner"></div>
+        <p>AI agents are analyzing the repository...</p>
+        <p style="font-size: 13px; margin-top: 8px;">This may take 1-2 minutes</p>
+    </div>
+
+    {% if error %}
+        <div class="error-box">
+            ❌ {{ error }}
+        </div>
     {% endif %}
+
+    {% if report %}
+        <div class="report-container">
+            <div class="report-header">
+                <span>📋</span>
+                <h2>Analysis Report — {{ repo_url }}</h2>
+            </div>
+            <div class="report-body">
+                {{ report|safe }}
+            </div>
+        </div>
+    {% endif %}
+</div>
+
+<script>
+    function showLoading() {
+        document.getElementById('loadingDiv').style.display = 'block';
+        document.getElementById('analyzeBtn').disabled = true;
+        document.getElementById('analyzeBtn').textContent = 'Analyzing...';
+    }
+</script>
+
 </body>
 </html>
