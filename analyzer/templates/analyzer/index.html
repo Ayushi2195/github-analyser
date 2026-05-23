@@ -1,281 +1,254 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GitHub Repository Analyzer</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+{% extends "analyzer/base.html" %}
 
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: #0d1117;
-            color: #e6edf3;
-            min-height: 100vh;
-        }
-
-        header {
-            background: #161b22;
-            border-bottom: 1px solid #30363d;
-            padding: 20px 40px;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-
-        header h1 {
-            font-size: 22px;
-            font-weight: 700;
-            color: #58a6ff;
-        }
-
-        header span { font-size: 28px; }
-
-        .container {
-            max-width: 960px;
-            margin: 40px auto;
-            padding: 0 20px;
-        }
-
-        .search-box {
-            background: #161b22;
-            border: 1px solid #30363d;
-            border-radius: 12px;
-            padding: 30px;
-            margin-bottom: 32px;
-        }
-
-        .search-box p {
-            color: #8b949e;
-            margin-bottom: 16px;
-            font-size: 15px;
-        }
-
-        .input-row {
-            display: flex;
-            gap: 12px;
-        }
-
-        .input-row input {
-            flex: 1;
-            padding: 12px 16px;
-            background: #0d1117;
-            border: 1px solid #30363d;
-            border-radius: 8px;
-            color: #e6edf3;
-            font-size: 15px;
-            outline: none;
-            transition: border-color 0.2s;
-        }
-
-        .input-row input:focus {
-            border-color: #58a6ff;
-        }
-
-        .input-row input::placeholder { color: #484f58; }
-
-        .btn {
-            padding: 12px 24px;
-            background: #238636;
-            color: white;
-            border: none;
-            border-radius: 8px;
-            font-size: 15px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: background 0.2s;
-            white-space: nowrap;
-        }
-
-        .btn:hover { background: #2ea043; }
-        .btn:disabled { background: #484f58; cursor: not-allowed; }
-
-        .loading {
-            display: none;
-            text-align: center;
-            padding: 40px;
-            color: #8b949e;
-        }
-
-        .loading .spinner {
-            width: 40px;
-            height: 40px;
-            border: 3px solid #30363d;
-            border-top-color: #58a6ff;
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;
-            margin: 0 auto 16px;
-        }
-
-        @keyframes spin { to { transform: rotate(360deg); } }
-
-        .report-container {
-            background: #161b22;
-            border: 1px solid #30363d;
-            border-radius: 12px;
-            overflow: hidden;
-        }
-
-        .report-header {
-            background: #1f2937;
-            padding: 16px 24px;
-            border-bottom: 1px solid #30363d;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .report-header span { font-size: 20px; }
-        .report-header h2 { font-size: 16px; color: #58a6ff; font-weight: 600; }
-
-        .report-body {
-            padding: 32px;
-            line-height: 1.75;
-        }
-
-        /* Markdown styling */
-        .report-body h1, .report-body h2, .report-body h3 {
-            color: #58a6ff;
-            margin: 28px 0 12px;
-            padding-bottom: 8px;
-            border-bottom: 1px solid #30363d;
-        }
-
-        .report-body h1 { font-size: 24px; }
-        .report-body h2 { font-size: 20px; }
-        .report-body h3 { font-size: 16px; color: #79c0ff; border-bottom: none; }
-
-        .report-body p { margin-bottom: 14px; color: #c9d1d9; }
-
-        .report-body ul, .report-body ol {
-            margin: 12px 0 16px 24px;
-            color: #c9d1d9;
-        }
-
-        .report-body li { margin-bottom: 6px; }
-
-        .report-body code {
-            background: #0d1117;
-            color: #f97583;
-            padding: 2px 6px;
-            border-radius: 4px;
-            font-family: 'Courier New', monospace;
-            font-size: 13px;
-        }
-
-        .report-body pre {
-            background: #0d1117;
-            border: 1px solid #30363d;
-            border-radius: 8px;
-            padding: 16px;
-            overflow-x: auto;
-            margin: 16px 0;
-        }
-
-        .report-body pre code {
-            background: none;
-            color: #e6edf3;
-            padding: 0;
-        }
-
-        .report-body strong { color: #e6edf3; }
-
-        .report-body table {
-            width: 100%;
-            border-collapse: collapse;
-            margin: 16px 0;
-        }
-
-        .report-body th {
-            background: #0d1117;
-            color: #58a6ff;
-            padding: 10px 14px;
-            text-align: left;
-            border: 1px solid #30363d;
-        }
-
-        .report-body td {
-            padding: 10px 14px;
-            border: 1px solid #30363d;
-            color: #c9d1d9;
-        }
-
-        .report-body tr:nth-child(even) { background: #0d1117; }
-
-        .report-body blockquote {
-            border-left: 3px solid #58a6ff;
-            padding-left: 16px;
-            color: #8b949e;
-            margin: 16px 0;
-        }
-
-        .error-box {
-            background: #2d1214;
-            border: 1px solid #f85149;
-            border-radius: 8px;
-            padding: 16px 20px;
-            color: #f85149;
-            margin-top: 20px;
-        }
-    </style>
-</head>
-<body>
-
-<header>
-    <span>🔍</span>
-    <h1>GitHub Repository Analyzer</h1>
-</header>
-
-<div class="container">
-    <div class="search-box">
-        <p>Enter any public GitHub repository URL to generate an AI-powered analysis report.</p>
-        <form method="POST" action="/analyze/" onsubmit="showLoading()">
-            {% csrf_token %}
-            <div class="input-row">
-                <input
-                    type="text"
-                    name="repo_url"
-                    placeholder="https://github.com/owner/repository"
-                    required
-                    value="{{ repo_url|default:'' }}"
-                >
-                <button type="submit" class="btn" id="analyzeBtn">⚡ Analyze</button>
+{% block content %}
+<main>
+    <!-- Hero -->
+    <section class="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-12 sm:pt-20 pb-16">
+        <div class="grid lg:grid-cols-2 gap-12 lg:gap-8 items-center">
+            <div class="text-center lg:text-left">
+                <p class="inline-flex items-center gap-2 rounded-full bg-white/80 border border-violet-200 px-4 py-1.5 text-xs font-semibold text-brand-600 shadow-sm mb-6">
+                    <span class="h-2 w-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    Multi-agent · GitHub API · Instant reports
+                </p>
+                <h1 class="text-4xl sm:text-5xl lg:text-[3.25rem] font-extrabold leading-tight tracking-tight">
+                    <span class="bg-gradient-to-r from-brand-600 via-violet-600 to-fuchsia-600 bg-clip-text text-transparent">RepoLens</span>
+                    <br>
+                    <span class="text-slate-800">Understand Any Repo</span>
+                    <span class="block text-accent-gold mt-1">In One Click</span>
+                </h1>
+                <p class="mt-6 text-slate-600 text-lg max-w-xl mx-auto lg:mx-0 leading-relaxed">
+                    Paste a public GitHub URL and get a beautiful report — structure, health score, issues, pull requests, and branches. Powered by CrewAI agents.
+                </p>
+                <div class="mt-8 flex flex-wrap gap-4 justify-center lg:justify-start">
+                    <a href="#analyze" class="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-brand-600 to-violet-600 text-white font-bold px-8 py-3.5 shadow-soft hover:shadow-xl hover:-translate-y-0.5 transition-all">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                        Analyze Repository
+                    </a>
+                    <a href="#how-it-works" class="inline-flex items-center gap-2 rounded-full bg-accent-gold text-slate-900 font-bold px-8 py-3.5 shadow-lg shadow-amber-200/60 hover:-translate-y-0.5 transition-all">
+                        How it works
+                    </a>
+                </div>
             </div>
-        </form>
-    </div>
 
-    <div class="loading" id="loadingDiv">
-        <div class="spinner"></div>
-        <p>AI agents are analyzing the repository...</p>
-        <p style="font-size: 13px; margin-top: 8px;">This may take 1-2 minutes</p>
-    </div>
-
-    {% if error %}
-        <div class="error-box">
-            ❌ {{ error }}
+            <!-- Hero illustration -->
+            <div class="relative flex justify-center lg:justify-end animate-float">
+                <div class="relative w-full max-w-md">
+                    <div class="absolute -inset-4 bg-gradient-to-br from-violet-400/30 to-fuchsia-400/20 rounded-3xl blur-2xl"></div>
+                    <div class="relative bg-white/90 backdrop-blur border border-white rounded-3xl p-8 shadow-card">
+                        <svg viewBox="0 0 320 280" class="w-full h-auto" aria-hidden="true">
+                            <defs>
+                                <linearGradient id="g1" x1="0%" y1="0%" x2="100%" y2="100%">
+                                    <stop offset="0%" style="stop-color:#6366f1"/>
+                                    <stop offset="100%" style="stop-color:#a855f7"/>
+                                </linearGradient>
+                                <linearGradient id="g2" x1="0%" y1="0%" x2="0%" y2="100%">
+                                    <stop offset="0%" style="stop-color:#f59e0b"/>
+                                    <stop offset="100%" style="stop-color:#f43f5e"/>
+                                </linearGradient>
+                            </defs>
+                            <rect x="40" y="60" width="200" height="140" rx="16" fill="#f5f3ff" stroke="#c7d2fe" stroke-width="2"/>
+                            <path d="M60 90 h40 v8 h-40z M110 90 h80 v8 h-80z M60 110 h120 v8 h-120z M60 130 h90 v8 h-90z" fill="#e0e7ff"/>
+                            <circle cx="240" cy="80" r="36" fill="url(#g1)" opacity="0.9"/>
+                            <text x="240" y="88" text-anchor="middle" fill="white" font-size="28" font-weight="bold">⌥</text>
+                            <circle cx="70" cy="200" r="22" fill="#22c55e" opacity="0.9"/>
+                            <text x="70" y="206" text-anchor="middle" fill="white" font-size="14">✓</text>
+                            <circle cx="260" cy="180" r="18" fill="url(#g2)"/>
+                            <text x="260" y="186" text-anchor="middle" fill="white" font-size="12">PR</text>
+                            <circle cx="180" cy="40" r="14" fill="#f43f5e" opacity="0.85"/>
+                            <text x="180" y="45" text-anchor="middle" fill="white" font-size="10">#</text>
+                        </svg>
+                        <div class="mt-4 grid grid-cols-3 gap-2 text-center text-xs font-semibold text-slate-500">
+                            <span class="rounded-lg bg-violet-50 py-2 text-brand-600">Structure</span>
+                            <span class="rounded-lg bg-amber-50 py-2 text-amber-600">Issues</span>
+                            <span class="rounded-lg bg-rose-50 py-2 text-rose-600">Branches</span>
+                        </div>
+                    </div>
+                    <div class="absolute -top-4 -right-2 h-12 w-12 rounded-2xl bg-white shadow-lg flex items-center justify-center text-xl animate-float-slow">🌿</div>
+                    <div class="absolute bottom-8 -left-4 h-10 w-10 rounded-xl bg-amber-400 shadow-lg flex items-center justify-center text-lg">⚡</div>
+                </div>
+            </div>
         </div>
-    {% endif %}
+    </section>
 
-    {% if report %}
-        <div class="report-container">
-            <div class="report-header">
-                <span>📋</span>
-                <h2>Analysis Report — {{ repo_url }}</h2>
+    <!-- Features -->
+    <section id="features" class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+        <div class="text-center max-w-2xl mx-auto mb-12">
+            <h2 class="text-3xl sm:text-4xl font-extrabold text-slate-800">Why Choose RepoLens?</h2>
+            <p class="mt-4 text-slate-600">Everything you need to assess a repository before contributing, interviewing, or onboarding — in one polished report.</p>
+        </div>
+        <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div class="group bg-white/90 backdrop-blur rounded-2xl p-6 border border-violet-100 shadow-card hover:shadow-soft hover:-translate-y-1 transition-all">
+                <div class="h-12 w-12 rounded-2xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center text-white text-xl mb-4 group-hover:scale-110 transition-transform">🗂️</div>
+                <h3 class="font-bold text-slate-800">Structure</h3>
+                <p class="mt-2 text-sm text-slate-500 leading-relaxed">Tech stack, root files, and project overview explained clearly.</p>
             </div>
-            <div class="report-body">
+            <div class="group bg-white/90 backdrop-blur rounded-2xl p-6 border border-violet-100 shadow-card hover:shadow-soft hover:-translate-y-1 transition-all">
+                <div class="h-12 w-12 rounded-2xl bg-gradient-to-br from-rose-500 to-pink-600 flex items-center justify-center text-white text-xl mb-4 group-hover:scale-110 transition-transform">🐛</div>
+                <h3 class="font-bold text-slate-800">Issues</h3>
+                <p class="mt-2 text-sm text-slate-500 leading-relaxed">Every open issue listed with authors, labels, and direct links.</p>
+            </div>
+            <div class="group bg-white/90 backdrop-blur rounded-2xl p-6 border border-violet-100 shadow-card hover:shadow-soft hover:-translate-y-1 transition-all">
+                <div class="h-12 w-12 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white text-xl mb-4 group-hover:scale-110 transition-transform">🔀</div>
+                <h3 class="font-bold text-slate-800">Pull Requests</h3>
+                <p class="mt-2 text-sm text-slate-500 leading-relaxed">See in-flight work — who submitted what and which branches.</p>
+            </div>
+            <div class="group bg-white/90 backdrop-blur rounded-2xl p-6 border border-violet-100 shadow-card hover:shadow-soft hover:-translate-y-1 transition-all">
+                <div class="h-12 w-12 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-white text-xl mb-4 group-hover:scale-110 transition-transform">📊</div>
+                <h3 class="font-bold text-slate-800">Health Score</h3>
+                <p class="mt-2 text-sm text-slate-500 leading-relaxed">Rule-based repo health with actionable signals — no guesswork.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- How it works -->
+    <section id="how-it-works" class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <div class="bg-gradient-to-br from-brand-600 to-violet-700 rounded-3xl p-8 sm:p-12 text-white shadow-soft">
+            <h2 class="text-2xl sm:text-3xl font-extrabold text-center mb-10">How it works</h2>
+            <div class="grid sm:grid-cols-3 gap-8 text-center">
+                <div>
+                    <div class="mx-auto h-14 w-14 rounded-2xl bg-white/20 flex items-center justify-center text-2xl font-bold mb-4">1</div>
+                    <h3 class="font-bold text-lg">Paste URL</h3>
+                    <p class="mt-2 text-violet-100 text-sm">Any public GitHub repository link</p>
+                </div>
+                <div>
+                    <div class="mx-auto h-14 w-14 rounded-2xl bg-white/20 flex items-center justify-center text-2xl font-bold mb-4">2</div>
+                    <h3 class="font-bold text-lg">Agents analyze</h3>
+                    <p class="mt-2 text-violet-100 text-sm">GitHub API + CrewAI structure agent</p>
+                </div>
+                <div>
+                    <div class="mx-auto h-14 w-14 rounded-2xl bg-white/20 flex items-center justify-center text-2xl font-bold mb-4">3</div>
+                    <h3 class="font-bold text-lg">Get report</h3>
+                    <p class="mt-2 text-violet-100 text-sm">Detailed markdown rendered beautifully</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Analyze form -->
+    <section id="analyze" class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+        <div class="bg-white/90 backdrop-blur-xl rounded-3xl border border-violet-100 shadow-card p-8 sm:p-10">
+            <div class="text-center mb-8">
+                <h2 class="text-2xl sm:text-3xl font-extrabold text-slate-800">Analyze a repository</h2>
+                <p class="mt-2 text-slate-500">Enter a public GitHub URL — analysis takes about 30–90 seconds</p>
+            </div>
+
+            <form method="POST" action="/analyze/" onsubmit="startAnalysis()" class="max-w-3xl mx-auto">
+                {% csrf_token %}
+                <div class="flex flex-col sm:flex-row gap-3">
+                    <div class="relative flex-1">
+                        <span class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
+                            <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+                        </span>
+                        <input
+                            type="url"
+                            name="repo_url"
+                            required
+                            placeholder="https://github.com/owner/repository"
+                            value="{{ repo_url|default:'' }}"
+                            class="w-full pl-12 pr-4 py-4 rounded-2xl border-2 border-violet-100 bg-slate-50/80 text-slate-800 placeholder-slate-400 focus:border-brand-500 focus:ring-4 focus:ring-brand-100 outline-none transition-all text-sm sm:text-base"
+                        >
+                    </div>
+                    <button type="submit" id="analyzeBtn" class="inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-brand-600 to-violet-600 text-white font-bold px-8 py-4 shadow-soft hover:shadow-xl hover:-translate-y-0.5 transition-all disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:translate-y-0 whitespace-nowrap">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                        <span id="analyzeBtnText">Analyze</span>
+                    </button>
+                </div>
+            </form>
+
+            {% if error %}
+            <div class="mt-6 max-w-3xl mx-auto rounded-2xl border-2 border-rose-200 bg-rose-50 px-5 py-4 flex items-start gap-3">
+                <span class="text-rose-500 text-xl">✕</span>
+                <p class="text-rose-700 font-medium text-sm">{{ error }}</p>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Loading -->
+        <div id="loadingPanel" class="hidden mt-8 max-w-3xl mx-auto">
+            <div class="bg-white/90 backdrop-blur rounded-3xl border border-violet-100 shadow-card p-8 text-center">
+                <div class="inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-brand-50 mb-6">
+                    <svg class="animate-spin h-8 w-8 text-brand-600" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                    </svg>
+                </div>
+                <p class="text-lg font-bold text-slate-800">Analyzing repository…</p>
+                <p class="text-sm text-slate-500 mt-1">This usually takes 30–90 seconds</p>
+                <div class="mt-8 space-y-3 text-left max-w-sm mx-auto">
+                    <div id="step1" class="flex items-center gap-3 rounded-xl px-4 py-3 loading-shimmer text-sm font-medium text-slate-600">
+                        <span class="step-icon h-6 w-6 rounded-full bg-violet-200 flex items-center justify-center text-xs">1</span>
+                        Fetching GitHub data…
+                    </div>
+                    <div id="step2" class="flex items-center gap-3 rounded-xl px-4 py-3 bg-slate-50 text-sm font-medium text-slate-400">
+                        <span class="step-icon h-6 w-6 rounded-full bg-slate-200 flex items-center justify-center text-xs">2</span>
+                        Running AI structure agent…
+                    </div>
+                    <div id="step3" class="flex items-center gap-3 rounded-xl px-4 py-3 bg-slate-50 text-sm font-medium text-slate-400">
+                        <span class="step-icon h-6 w-6 rounded-full bg-slate-200 flex items-center justify-center text-xs">3</span>
+                        Building your report…
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Report -->
+    {% if report %}
+    <section id="report" class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pb-20">
+        <div class="bg-white/95 backdrop-blur-xl rounded-3xl border border-violet-100 shadow-card overflow-hidden">
+            <div class="bg-gradient-to-r from-brand-600 to-violet-600 px-6 sm:px-8 py-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div class="flex items-center gap-3 text-white">
+                    <span class="flex h-10 w-10 items-center justify-center rounded-xl bg-white/20 text-xl">📋</span>
+                    <div>
+                        <p class="text-xs font-medium text-violet-200 uppercase tracking-wider">Analysis complete</p>
+                        <h2 class="font-bold text-sm sm:text-base break-all">{{ repo_url }}</h2>
+                    </div>
+                </div>
+                <a href="#analyze" class="inline-flex items-center justify-center rounded-full bg-white text-brand-600 text-sm font-bold px-5 py-2 hover:bg-violet-50 transition-colors shrink-0">
+                    Analyze another
+                </a>
+            </div>
+            <div class="report-prose px-6 sm:px-10 py-8 sm:py-10 max-w-none">
                 {{ report|safe }}
             </div>
         </div>
+    </section>
     {% endif %}
-</div>
+</main>
+{% endblock %}
 
+{% block scripts %}
 <script>
-    function showLoading() {
-        document.getElementById('loadingDiv').style.display = 'block';
-        document.getElementById('analyzeBtn').disabled = true;
-        document.getElementById('analyzeBtn').textContent = 'Analyzing...';
-    }
-</script>
+    function startAnalysis() {
+        document.getElementById('loadingPanel').classList.remove('hidden');
+        const btn = document.getElementById('analyzeBtn');
+        btn.disabled = true;
+        document.getElementById('analyzeBtnText').textContent = 'Analyzing…';
+        document.getElementById('loadingPanel').scrollIntoView({ behavior: 'smooth', block: 'center' });
 
-</body>
-</html>
+        const steps = ['step1', 'step2', 'step3'];
+        const delays = [0, 12000, 35000];
+        delays.forEach((delay, i) => {
+            setTimeout(() => {
+                steps.forEach((id, j) => {
+                    const el = document.getElementById(id);
+                    const icon = el.querySelector('.step-icon');
+                    if (j < i) {
+                        el.className = 'flex items-center gap-3 rounded-xl px-4 py-3 bg-emerald-50 text-sm font-medium text-emerald-700';
+                        icon.className = 'step-icon h-6 w-6 rounded-full bg-emerald-500 text-white flex items-center justify-center text-xs';
+                        icon.textContent = '✓';
+                    } else if (j === i) {
+                        el.className = 'flex items-center gap-3 rounded-xl px-4 py-3 loading-shimmer text-sm font-medium text-brand-700';
+                        icon.className = 'step-icon h-6 w-6 rounded-full bg-brand-500 text-white flex items-center justify-center text-xs';
+                        icon.textContent = String(j + 1);
+                    }
+                });
+            }, delay);
+        });
+    }
+
+    {% if report %}
+    document.getElementById('report')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    {% endif %}
+</script>
+{% endblock %}

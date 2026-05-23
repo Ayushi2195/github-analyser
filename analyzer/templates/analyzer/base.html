@@ -1,0 +1,85 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}RepoLens — GitHub Repository Analyzer{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Poppins', 'system-ui', 'sans-serif'] },
+                    colors: {
+                        brand: {
+                            50: '#f5f3ff',
+                            100: '#ede9fe',
+                            200: '#ddd6fe',
+                            500: '#6366f1',
+                            600: '#4f46e5',
+                            700: '#4338ca',
+                        },
+                        accent: {
+                            gold: '#f59e0b',
+                            coral: '#f43f5e',
+                        }
+                    },
+                    boxShadow: {
+                        'soft': '0 25px 50px -12px rgba(99, 102, 241, 0.15)',
+                        'card': '0 10px 40px -10px rgba(30, 27, 75, 0.12)',
+                    }
+                }
+            }
+        }
+    </script>
+    <link rel="stylesheet" href="{% static 'analyzer/css/site.css' %}">
+    {% block extra_head %}{% endblock %}
+</head>
+<body class="font-sans antialiased text-slate-800 bg-[#faf8ff] min-h-screen overflow-x-hidden">
+
+    <!-- Background blobs -->
+    <div class="fixed inset-0 -z-10 overflow-hidden">
+        <div class="blob w-[520px] h-[520px] bg-violet-300/40 top-[-120px] left-[-80px] animate-pulse-glow"></div>
+        <div class="blob w-[400px] h-[400px] bg-fuchsia-200/50 top-[20%] right-[-100px]"></div>
+        <div class="blob w-[360px] h-[360px] bg-indigo-200/60 bottom-[-80px] left-[30%]"></div>
+        <div class="blob w-[280px] h-[280px] bg-amber-100/70 bottom-[20%] right-[15%]"></div>
+    </div>
+
+    <!-- Nav -->
+    <nav class="sticky top-0 z-50 backdrop-blur-xl bg-white/70 border-b border-violet-100/80">
+        <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16 sm:h-[4.5rem]">
+                <a href="/" class="flex items-center gap-2 group">
+                    <span class="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-brand-600 to-fuchsia-500 text-white text-lg shadow-lg shadow-indigo-300/50 group-hover:scale-105 transition-transform">◈</span>
+                    <span class="text-xl font-extrabold bg-gradient-to-r from-brand-600 to-fuchsia-600 bg-clip-text text-transparent">RepoLens</span>
+                </a>
+                <div class="hidden md:flex items-center gap-8 text-sm font-medium text-slate-600">
+                    <a href="/" class="text-brand-600 font-semibold">Home</a>
+                    <a href="#features" class="hover:text-brand-600 transition-colors">Features</a>
+                    <a href="#analyze" class="hover:text-brand-600 transition-colors">Analyze</a>
+                    <a href="#how-it-works" class="hover:text-brand-600 transition-colors">How it works</a>
+                </div>
+                <a href="#analyze" class="hidden sm:inline-flex items-center gap-2 rounded-full bg-slate-900 text-white text-sm font-semibold px-5 py-2.5 hover:bg-slate-800 shadow-lg transition-all hover:-translate-y-0.5">
+                    Start analyzing
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    {% block content %}{% endblock %}
+
+    <footer class="border-t border-violet-100/80 bg-white/50 backdrop-blur-sm mt-20">
+        <div class="max-w-6xl mx-auto px-4 py-10 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-slate-500">
+            <p class="font-medium"><span class="text-brand-600 font-bold">RepoLens</span> — AI-powered GitHub repository intelligence</p>
+            <p>Built with Django · CrewAI · GitHub API</p>
+        </div>
+    </footer>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>
