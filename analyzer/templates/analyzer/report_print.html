@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>RepoFlow Report — {{ repo_url }}</title>
+    <style>
+        /*
+         * PDF-optimized styles: solid colors only (no gradients/shadows).
+         * Gradients and box-shadows get rasterized into heavy image layers
+         * and cause lag when scrolling in PDF viewers.
+         */
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: Arial, Helvetica, sans-serif;
+            font-size: 11px;
+            line-height: 1.6;
+            color: #334155;
+            background: #ffffff;
+        }
+
+        .cover {
+            background: #5b21b6;
+            color: #ffffff;
+            padding: 24px 28px 20px;
+            margin-bottom: 18px;
+        }
+
+        .brand {
+            font-size: 10px;
+            font-weight: bold;
+            letter-spacing: 2px;
+            margin-bottom: 6px;
+        }
+
+        .cover h1 {
+            font-size: 22px;
+            font-weight: bold;
+            margin-bottom: 4px;
+            color: #ffffff;
+        }
+
+        .cover-sub {
+            font-size: 11px;
+            color: #e9d5ff;
+        }
+
+        .meta-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 18px;
+        }
+
+        .meta-table td {
+            width: 33.33%;
+            vertical-align: top;
+            padding: 10px 12px;
+            border: 1px solid #ddd6fe;
+            background: #faf5ff;
+        }
+
+        .meta-label {
+            font-size: 9px;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            color: #6d28d9;
+            margin-bottom: 4px;
+        }
+
+        .meta-value {
+            font-size: 11px;
+            font-weight: bold;
+            color: #1e293b;
+            word-break: break-all;
+        }
+
+        .health-badge {
+            font-size: 18px;
+            font-weight: bold;
+            color: #5b21b6;
+        }
+
+        .health-label {
+            font-size: 10px;
+            color: #64748b;
+        }
+
+        .report-body {
+            padding: 0 4px 24px;
+        }
+
+        .report-prose h1 { display: none; }
+
+        .report-prose h2 {
+            font-size: 14px;
+            font-weight: bold;
+            color: #4338ca;
+            margin: 20px 0 8px;
+            padding: 6px 10px;
+            background: #eef2ff;
+            border-left: 4px solid #6366f1;
+            page-break-after: avoid;
+        }
+
+        .report-prose h3 {
+            font-size: 12px;
+            font-weight: bold;
+            color: #6366f1;
+            margin: 12px 0 4px;
+            page-break-after: avoid;
+        }
+
+        .report-prose p {
+            margin-bottom: 6px;
+            color: #475569;
+        }
+
+        .report-prose ul,
+        .report-prose ol {
+            margin: 4px 0 10px 18px;
+        }
+
+        .report-prose li {
+            margin-bottom: 3px;
+            color: #475569;
+        }
+
+        .report-prose strong { color: #1e293b; }
+
+        .report-prose a {
+            color: #4f46e5;
+            text-decoration: none;
+        }
+
+        .report-prose code {
+            background: #f1f5f9;
+            color: #be185d;
+            padding: 1px 4px;
+            font-size: 10px;
+        }
+
+        .report-prose pre {
+            background: #f8fafc;
+            color: #334155;
+            border: 1px solid #e2e8f0;
+            padding: 8px;
+            margin: 8px 0;
+            font-size: 10px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .report-prose pre code {
+            background: transparent;
+            color: inherit;
+            padding: 0;
+        }
+
+        .report-prose hr { display: none; }
+
+        .report-prose table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 10px 0;
+            font-size: 10px;
+        }
+
+        .report-prose th {
+            background: #eef2ff;
+            color: #4338ca;
+            padding: 6px 8px;
+            text-align: left;
+            border: 1px solid #c7d2fe;
+        }
+
+        .report-prose td {
+            padding: 6px 8px;
+            border: 1px solid #e2e8f0;
+        }
+
+        .footer {
+            margin-top: 16px;
+            padding-top: 12px;
+            border-top: 1px solid #e2e8f0;
+            text-align: center;
+            font-size: 9px;
+            color: #94a3b8;
+        }
+
+        .footer strong { color: #6366f1; }
+    </style>
+</head>
+<body>
+    <div class="cover">
+        <div class="brand">REPOFLOW</div>
+        <h1>GitHub Repository Analysis Report</h1>
+        <p class="cover-sub">Generated {{ generated_at }}</p>
+    </div>
+
+    <table class="meta-table">
+        <tr>
+            <td>
+                <div class="meta-label">Repository</div>
+                <div class="meta-value">{{ repo_display }}</div>
+            </td>
+            <td>
+                <div class="meta-label">Health Score</div>
+                <div class="health-badge">{{ health_score }}/100</div>
+                <div class="health-label">{{ health_label }}</div>
+            </td>
+            <td>
+                <div class="meta-label">Source URL</div>
+                <div class="meta-value" style="font-size: 9px;">{{ repo_url }}</div>
+            </td>
+        </tr>
+    </table>
+
+    <div class="report-body">
+        <div class="report-prose">
+            {{ report_html|safe }}
+        </div>
+    </div>
+
+    <div class="footer">
+        Generated by <strong>RepoFlow</strong> · Django · CrewAI · GitHub API
+    </div>
+</body>
+</html>

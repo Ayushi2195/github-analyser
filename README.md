@@ -27,12 +27,23 @@ cd github-analyser
 python -m venv venv
 venv\Scripts\activate
 pip install -r requirements.txt
+python -m playwright install chromium
 copy .env.example .env
 # Edit .env — set GROQ_API_KEY (required)
 python manage.py runserver
 ```
 
 Open http://127.0.0.1:8000/ and try `https://github.com/django/django`.
+
+### PDF export
+
+Reports download as PDF via **Playwright** (headless Chromium print-to-PDF), so styling matches a real browser much better than HTML-to-PDF libraries.
+
+If download fails, run:
+
+```bash
+python -m playwright install chromium
+```
 
 ## Tests
 
