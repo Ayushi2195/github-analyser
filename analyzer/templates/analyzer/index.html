@@ -204,9 +204,17 @@
                         <h2 class="font-bold text-sm sm:text-base break-all">{{ repo_url }}</h2>
                     </div>
                 </div>
-                <a href="#analyze" class="inline-flex items-center justify-center rounded-full bg-white text-brand-600 text-sm font-bold px-5 py-2 hover:bg-violet-50 transition-colors shrink-0">
-                    Analyze another
-                </a>
+                <div class="flex items-center gap-3">
+                    <a href="{% url 'download_pdf' %}?repo_url={{ repo_url|urlencode }}" class="inline-flex items-center justify-center rounded-full bg-white/10 border border-white/40 text-white text-xs sm:text-sm font-semibold px-4 py-2 hover:bg-white hover:text-brand-600 transition-colors shrink-0">
+                        <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M8 12l4 4m0 0l4-4m-4 4V4"/>
+                        </svg>
+                        <span>Download PDF</span>
+                    </a>
+                    <a href="#analyze" class="inline-flex items-center justify-center rounded-full bg-white text-brand-600 text-xs sm:text-sm font-bold px-4 sm:px-5 py-2 hover:bg-violet-50 transition-colors shrink-0">
+                        Analyze another
+                    </a>
+                </div>
             </div>
             <div class="report-prose px-6 sm:px-10 py-8 sm:py-10 max-w-none">
                 {{ report|safe }}
