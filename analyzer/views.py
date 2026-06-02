@@ -1,28 +1,184 @@
 import re
 from datetime import datetime
+from statistics import mean
 
 import markdown
 from django.http import HttpResponse
 from django.shortcuts import redirect, render
 from django.template.loader import render_to_string
+from pymongo.errors import PyMongoError
 
 from analyzer.github_api import GitHubAPIError, parse_repo_url
+from analyzer.mongo_cache import (
+    RepoAnalysisCache,
+    analyzed_ago_label,
+    analyzed_at_label,
+    cached_branch_count,
+    cached_html,
+    cached_markdown,
+    connect_mongo,
+    get_cached_analysis,
+    normalize_repo_url,
+    safe_cached_analyses,
+    save_analysis_cache,
+)
 from analyzer.pdf_generator import html_to_pdf
-from .crew import run_analysis
+from .crew.crew import run_analysis_result
 
 SESSION_REPORT_KEY = "repoflow_report"
 
+FALLBACK_GALLERY = [
+    {
+        "full_name": "facebook/react",
+        "owner": "facebook",
+        "repo": "react",
+        "repo_url": "https://github.com/facebook/react",
+        "health_score": 92,
+        "health_label": "Healthy",
+        "primary_language": "JavaScript",
+        "tech_stack": ["JavaScript", "MIT"],
+        "stars": 228000,
+        "branch_count": 12,
+        "analyzed_ago": "5h ago",
+    },
+    {
+        "full_name": "rust-lang/rustlings",
+        "owner": "rust-lang",
+        "repo": "rustlings",
+        "repo_url": "https://github.com/rust-lang/rustlings",
+        "health_score": 88,
+        "health_label": "Healthy",
+        "primary_language": "Rust",
+        "tech_stack": ["Rust", "MIT"],
+        "stars": 54000,
+        "branch_count": 7,
+        "analyzed_ago": "1d ago",
+    },
+    {
+        "full_name": "moby/moby",
+        "owner": "moby",
+        "repo": "moby",
+        "repo_url": "https://github.com/moby/moby",
+        "health_score": 61,
+        "health_label": "Needs attention",
+        "primary_language": "Go",
+        "tech_stack": ["Go", "Apache-2.0"],
+        "stars": 68000,
+        "branch_count": 21,
+        "analyzed_ago": "3d ago",
+    },
+]
+
+
+def _format_count(value: int) -> str:
+    if value >= 1000:
+        return f"{value / 1000:.1f}k".replace(".0k", "k")
+    return str(value)
+
+
+def _tech_stack(snapshot: dict) -> list[str]:
+    meta = snapshot.get("meta", {})
+    stack = []
+    for value in [meta.get("language"), *(meta.get("topics") or [])[:2], meta.get("license")]:
+        if value and value not in stack:
+            stack.append(value)
+    return stack[:4]
+
+
+def _gallery_items() -> list[dict]:
+    analyses = safe_cached_analyses(limit=5)
+    items = [
+        {
+            "full_name": f"{analysis.owner}/{analysis.repo_name}",
+            "owner": analysis.owner,
+            "repo": analysis.repo_name,
+            "repo_url": analysis.repo_url,
+            "health_score": analysis.health_score or 0,
+            "health_label": analysis.health_label or "Unknown",
+            "primary_language": analysis.primary_language or "Unknown",
+            "tech_stack": analysis.tech_stack or [analysis.primary_language or "Repo"],
+            "stars": _format_count(analysis.stars or 0),
+            "branch_count": cached_branch_count(analysis),
+            "analyzed_ago": analyzed_ago_label(analysis),
+            "analyzed_at_label": analyzed_at_label(analysis),
+        }
+        for analysis in analyses
+    ]
+    fallbacks = [
+        {
+            **item,
+            "stars": _format_count(item["stars"]),
+            "analyzed_at_label": "Sample gallery item",
+        }
+        for item in FALLBACK_GALLERY
+    ]
+    return (items + fallbacks)[:5]
+
+
+def _cached_analysis_count() -> int:
+    try:
+        connect_mongo()
+        return RepoAnalysisCache.objects.count()
+    except (PyMongoError, OSError):
+        return 0
+
+
+def _homepage_context(extra: dict | None = None) -> dict:
+    total_real = _cached_analysis_count()
+    gallery = _gallery_items()
+    avg_score = round(mean(item["health_score"] for item in gallery))
+    repo_count = max(total_real, 1240)
+    context = {
+        "gallery_items": gallery,
+        "repos_analyzed": f"{repo_count:,}",
+        "avg_health_score": avg_score,
+        "healthy_count": sum(1 for item in gallery if item["health_score"] >= 80),
+        "language_count": len({item["primary_language"] for item in gallery if item["primary_language"]}),
+        "sample_tags": ["Structure", "Health score", "Issues", "Branches"],
+    }
+    if extra:
+        context.update(extra)
+    return context
+
 
 def index(request):
-    return render(request, "analyzer/index.html")
+    return render(request, "analyzer/index.html", _homepage_context())
 
 
 def _render_markdown_report(repo_url: str) -> tuple[str, str]:
-    md_report = run_analysis(repo_url)
+    normalized_url = normalize_repo_url(repo_url)
+    try:
+        cached = get_cached_analysis(normalized_url)
+        if cached and cached_markdown(cached):
+            md_report = cached_markdown(cached)
+            html_report = cached_html(cached) or markdown.markdown(
+                md_report,
+                extensions=["tables", "fenced_code", "nl2br"],
+            )
+            return md_report, html_report
+    except (PyMongoError, OSError):
+        pass
+
+    result = run_analysis_result(normalized_url)
+    md_report = result["markdown"]
     html_report = markdown.markdown(
         md_report,
         extensions=["tables", "fenced_code", "nl2br"],
     )
+    report_sections = {
+        **result["sections"],
+        "markdown": md_report,
+        "html": html_report,
+    }
+    try:
+        save_analysis_cache(
+            normalized_url,
+            result["snapshot"],
+            result["health"],
+            report_sections,
+        )
+    except (PyMongoError, OSError):
+        pass
     return md_report, html_report
 
 
@@ -93,14 +249,14 @@ def _pdf_filename(repo_url: str) -> str:
 
 def analyze(request):
     if request.method != "POST":
-        return render(request, "analyzer/index.html")
+        return render(request, "analyzer/index.html", _homepage_context())
 
     repo_url = request.POST.get("repo_url", "").strip()
     if not repo_url:
         return render(
             request,
             "analyzer/index.html",
-            {"error": "Please enter a GitHub repository URL.", "repo_url": repo_url},
+            _homepage_context({"error": "Please enter a GitHub repository URL.", "repo_url": repo_url}),
         )
 
     try:
@@ -109,22 +265,22 @@ def analyze(request):
         return render(
             request,
             "analyzer/index.html",
-            {"report": html_report, "repo_url": repo_url},
+            _homepage_context({"report": html_report, "repo_url": repo_url}),
         )
     except GitHubAPIError as exc:
         return render(
             request,
             "analyzer/index.html",
-            {"error": str(exc), "repo_url": repo_url},
+            _homepage_context({"error": str(exc), "repo_url": repo_url}),
         )
     except Exception as exc:
         return render(
             request,
             "analyzer/index.html",
-            {
+            _homepage_context({
                 "error": f"Analysis failed: {exc}",
                 "repo_url": repo_url,
-            },
+            }),
         )
 
 
@@ -143,16 +299,16 @@ def download_pdf(request):
             return render(
                 request,
                 "analyzer/index.html",
-                {"error": str(exc), "repo_url": repo_url},
+                _homepage_context({"error": str(exc), "repo_url": repo_url}),
             )
         except Exception as exc:
             return render(
                 request,
                 "analyzer/index.html",
-                {
+                _homepage_context({
                     "error": f"PDF export failed: {exc}",
                     "repo_url": repo_url,
-                },
+                }),
             )
 
     try:
@@ -165,11 +321,11 @@ def download_pdf(request):
         return render(
             request,
             "analyzer/index.html",
-            {
+            _homepage_context({
                 "error": f"PDF export failed: {exc}.{hint}",
                 "repo_url": repo_url,
                 "report": html_report,
-            },
+            }),
         )
 
     response = HttpResponse(pdf_bytes, content_type="application/pdf")

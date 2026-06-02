@@ -31,10 +31,11 @@ def _health_section(snapshot: dict) -> str:
     )
 
 
-def run_analysis(repo_url: str) -> str:
+def run_analysis_result(repo_url: str) -> dict:
     clear_snapshot_cache()
     snapshot = fetch_repo_snapshot(repo_url)
     full_name = snapshot["meta"].get("full_name", repo_url)
+    health = compute_health_score(snapshot)
 
     structure = structure_task(repo_url, snapshot)
 
@@ -47,11 +48,13 @@ def run_analysis(repo_url: str) -> str:
     crew.kickoff()
     clear_snapshot_cache()
 
+    structure_md = _task_output(structure)
+    health_md = _health_section(snapshot)
     issues_md = build_issues_section(snapshot)
     prs_md = build_pull_requests_section(snapshot)
     branches_md = build_branches_section(snapshot)
 
-    return f"""# 📊 GitHub Repository Analysis Report
+    markdown_report = f"""# 📊 GitHub Repository Analysis Report
 
 **Repository:** [{full_name}]({repo_url})
 
@@ -59,13 +62,13 @@ def run_analysis(repo_url: str) -> str:
 
 ## 🏥 Repository Health
 
-{_health_section(snapshot)}
+{health_md}
 
 ---
 
 ## 🗂️ Repository Structure
 
-{_task_output(structure)}
+{structure_md}
 
 ---
 
@@ -85,3 +88,21 @@ def run_analysis(repo_url: str) -> str:
 
 {branches_md}
 """
+
+    return {
+        "markdown": markdown_report,
+        "snapshot": snapshot,
+        "health": health,
+        "sections": {
+            "health": health_md,
+            "structure": structure_md,
+            "issues": issues_md,
+            "pull_requests": prs_md,
+            "branches": branches_md,
+            "branch_count": len(snapshot.get("branches", [])),
+        },
+    }
+
+
+def run_analysis(repo_url: str) -> str:
+    return run_analysis_result(repo_url)["markdown"]
