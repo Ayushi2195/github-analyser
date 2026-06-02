@@ -6,6 +6,7 @@ import markdown
 from django.http import HttpResponse
 from django.shortcuts import redirect, render
 from django.template.loader import render_to_string
+from django.urls import reverse
 from pymongo.errors import PyMongoError
 
 from analyzer.github_api import GitHubAPIError, parse_repo_url
@@ -27,7 +28,7 @@ from .crew.crew import run_analysis_result
 
 SESSION_REPORT_KEY = "repoflow_report"
 
-FALLBACK_GALLERY = [
+FEATURED_REPOS = [
     {
         "full_name": "facebook/react",
         "owner": "facebook",
@@ -36,38 +37,200 @@ FALLBACK_GALLERY = [
         "health_score": 92,
         "health_label": "Healthy",
         "primary_language": "JavaScript",
-        "tech_stack": ["JavaScript", "MIT"],
+        "tech_stack": ["JavaScript", "UI", "MIT"],
         "stars": 228000,
         "branch_count": 12,
-        "analyzed_ago": "5h ago",
+        "analyzed_ago": "Featured",
     },
     {
-        "full_name": "rust-lang/rustlings",
-        "owner": "rust-lang",
-        "repo": "rustlings",
-        "repo_url": "https://github.com/rust-lang/rustlings",
-        "health_score": 88,
+        "full_name": "fastapi/fastapi",
+        "owner": "fastapi",
+        "repo": "fastapi",
+        "repo_url": "https://github.com/fastapi/fastapi",
+        "health_score": 91,
         "health_label": "Healthy",
-        "primary_language": "Rust",
-        "tech_stack": ["Rust", "MIT"],
-        "stars": 54000,
-        "branch_count": 7,
-        "analyzed_ago": "1d ago",
+        "primary_language": "Python",
+        "tech_stack": ["Python", "API", "MIT"],
+        "stars": 86000,
+        "branch_count": 8,
+        "analyzed_ago": "Featured",
     },
     {
-        "full_name": "moby/moby",
-        "owner": "moby",
-        "repo": "moby",
-        "repo_url": "https://github.com/moby/moby",
-        "health_score": 61,
-        "health_label": "Needs attention",
-        "primary_language": "Go",
-        "tech_stack": ["Go", "Apache-2.0"],
-        "stars": 68000,
-        "branch_count": 21,
-        "analyzed_ago": "3d ago",
+        "full_name": "django/django",
+        "owner": "django",
+        "repo": "django",
+        "repo_url": "https://github.com/django/django",
+        "health_score": 89,
+        "health_label": "Healthy",
+        "primary_language": "Python",
+        "tech_stack": ["Python", "Web", "BSD-3-Clause"],
+        "stars": 83000,
+        "branch_count": 10,
+        "analyzed_ago": "Featured",
     },
 ]
+
+FEATURED_REPORTS = {
+    "facebook/react": {
+        "analyzed_at": "Featured seed report",
+        "markdown": """# 📊 GitHub Repository Analysis Report
+
+**Repository:** [facebook/react](https://github.com/facebook/react)
+
+---
+
+## 🏥 Repository Health
+
+**Score:** 92/100 (Healthy)
+
+**Signals:**
+- Mature repository structure with clear package boundaries
+- Strong ecosystem documentation and active maintenance
+- Large issue/PR volume is expected for a project at this scale
+
+---
+
+## 🗂️ Repository Structure
+
+React is a mature JavaScript UI library with a monorepo-style layout. The repo is organized around packages, build tooling, examples, fixtures, and documentation.
+
+### Tech Stack
+- JavaScript
+- Node.js package tooling
+- MIT license
+
+### Key Files and Folders
+- **packages/**: Core React packages and supporting modules.
+- **fixtures/**: Example apps and integration fixtures.
+- **scripts/**: Build, test, and release automation.
+- **README.md**: Project overview and onboarding entry point.
+
+---
+
+## 🐛 Open Issues
+
+Large open issue volume is normal for React because it receives ecosystem-wide bug reports, feature discussions, and framework integration questions.
+
+---
+
+## 🔀 Pull Requests
+
+PR activity is high and usually reflects ongoing maintenance, experiments, test updates, and framework improvements.
+
+---
+
+## 🌿 Branch Analysis
+
+The default branch is used for ongoing development. Release and feature work is managed through disciplined branches and review workflows.
+""",
+    },
+    "fastapi/fastapi": {
+        "analyzed_at": "Featured seed report",
+        "markdown": """# 📊 GitHub Repository Analysis Report
+
+**Repository:** [fastapi/fastapi](https://github.com/fastapi/fastapi)
+
+---
+
+## 🏥 Repository Health
+
+**Score:** 91/100 (Healthy)
+
+**Signals:**
+- Clear Python project identity and documentation
+- Strong API-focused ecosystem with active maintenance
+- Healthy public contribution workflow
+
+---
+
+## 🗂️ Repository Structure
+
+FastAPI is a Python web framework focused on type hints, API ergonomics, and automatic documentation. The repository layout is documentation-heavy and contributor-friendly.
+
+### Tech Stack
+- Python
+- ASGI ecosystem
+- MIT license
+
+### Key Files and Folders
+- **fastapi/**: Framework source package.
+- **docs/**: User-facing documentation and examples.
+- **tests/**: Regression and behavior coverage.
+- **pyproject.toml**: Python project configuration.
+
+---
+
+## 🐛 Open Issues
+
+Issues typically include framework questions, edge cases, documentation improvements, and integration requests.
+
+---
+
+## 🔀 Pull Requests
+
+PRs usually cover docs, validation behavior, typing improvements, and compatibility updates.
+
+---
+
+## 🌿 Branch Analysis
+
+The repository uses a conventional default branch workflow with maintenance and release activity managed through reviewed pull requests.
+""",
+    },
+    "django/django": {
+        "analyzed_at": "Featured seed report",
+        "markdown": """# 📊 GitHub Repository Analysis Report
+
+**Repository:** [django/django](https://github.com/django/django)
+
+---
+
+## 🏥 Repository Health
+
+**Score:** 89/100 (Healthy)
+
+**Signals:**
+- Long-running mature framework with stable conventions
+- Deep test suite and documentation culture
+- Large contributor surface requires careful review discipline
+
+---
+
+## 🗂️ Repository Structure
+
+Django is a mature Python web framework with a stable source layout, extensive tests, and strong documentation. The repository is built for long-term maintenance.
+
+### Tech Stack
+- Python
+- Web framework
+- BSD license
+
+### Key Files and Folders
+- **django/**: Framework source package.
+- **tests/**: Large test suite for framework behavior.
+- **docs/**: Project documentation and release notes.
+- **setup.cfg / pyproject.toml**: Packaging and tooling configuration.
+
+---
+
+## 🐛 Open Issues
+
+Issues are usually framework bugs, documentation refinements, compatibility updates, and feature discussions.
+
+---
+
+## 🔀 Pull Requests
+
+Pull requests tend to be reviewed carefully because framework changes affect a broad user base.
+
+---
+
+## 🌿 Branch Analysis
+
+Django uses disciplined branching and release management, with development flowing through reviewed changes.
+""",
+    },
+}
 
 
 def _format_count(value: int) -> str:
@@ -76,23 +239,37 @@ def _format_count(value: int) -> str:
     return str(value)
 
 
-def _tech_stack(snapshot: dict) -> list[str]:
-    meta = snapshot.get("meta", {})
-    stack = []
-    for value in [meta.get("language"), *(meta.get("topics") or [])[:2], meta.get("license")]:
-        if value and value not in stack:
-            stack.append(value)
-    return stack[:4]
+def _featured_gallery_items() -> list[dict]:
+    return [
+        {
+            **item,
+            "stars": _format_count(item["stars"]),
+            "display_url": item["repo_url"].replace("https://", ""),
+            "report_url": reverse(
+                "featured_report",
+                kwargs={"owner": item["owner"], "repo_name": item["repo"]},
+            ),
+            "is_featured": True,
+            "analyzed_at_label": "Featured seed report",
+        }
+        for item in FEATURED_REPOS
+    ]
 
 
 def _gallery_items() -> list[dict]:
-    analyses = safe_cached_analyses(limit=5)
+    analyses = safe_cached_analyses(limit=6)
     items = [
         {
             "full_name": f"{analysis.owner}/{analysis.repo_name}",
             "owner": analysis.owner,
             "repo": analysis.repo_name,
             "repo_url": analysis.repo_url,
+            "display_url": analysis.repo_url.replace("https://", ""),
+            "report_url": reverse(
+                "cached_report",
+                kwargs={"owner": analysis.owner, "repo_name": analysis.repo_name},
+            ),
+            "is_featured": False,
             "health_score": analysis.health_score or 0,
             "health_label": analysis.health_label or "Unknown",
             "primary_language": analysis.primary_language or "Unknown",
@@ -104,15 +281,15 @@ def _gallery_items() -> list[dict]:
         }
         for analysis in analyses
     ]
-    fallbacks = [
-        {
-            **item,
-            "stars": _format_count(item["stars"]),
-            "analyzed_at_label": "Sample gallery item",
-        }
-        for item in FALLBACK_GALLERY
-    ]
-    return (items + fallbacks)[:5]
+    if len(items) >= 6:
+        return items[:6]
+
+    featured = _featured_gallery_items()
+    if not items:
+        return featured
+
+    featured_needed = max(0, 4 - len(items))
+    return items + featured[:featured_needed]
 
 
 def _cached_analysis_count() -> int:
@@ -127,10 +304,9 @@ def _homepage_context(extra: dict | None = None) -> dict:
     total_real = _cached_analysis_count()
     gallery = _gallery_items()
     avg_score = round(mean(item["health_score"] for item in gallery))
-    repo_count = max(total_real, 1240)
     context = {
         "gallery_items": gallery,
-        "repos_analyzed": f"{repo_count:,}",
+        "repos_analyzed": f"{total_real:,}",
         "avg_health_score": avg_score,
         "healthy_count": sum(1 for item in gallery if item["health_score"] >= 80),
         "language_count": len({item["primary_language"] for item in gallery if item["primary_language"]}),
@@ -282,6 +458,66 @@ def analyze(request):
                 "repo_url": repo_url,
             }),
         )
+
+
+def cached_report(request, owner: str, repo_name: str):
+    repo_url = f"https://github.com/{owner}/{repo_name}"
+    try:
+        cached = get_cached_analysis(repo_url)
+    except (GitHubAPIError, PyMongoError, OSError):
+        cached = None
+
+    if not cached or not cached_markdown(cached):
+        return render(
+            request,
+            "analyzer/index.html",
+            _homepage_context({
+                "error": "That saved report was not found. Analyze the repository to create it.",
+                "repo_url": repo_url,
+            }),
+        )
+
+    md_report = cached_markdown(cached)
+    html_report = cached_html(cached) or markdown.markdown(
+        md_report,
+        extensions=["tables", "fenced_code", "nl2br"],
+    )
+    _cache_report(request, repo_url, html_report, md_report)
+    return render(
+        request,
+        "analyzer/report_detail.html",
+        {
+            "repo_url": repo_url,
+            "repo_display": f"{owner}/{repo_name}",
+            "report": html_report,
+            "analyzed_at": analyzed_at_label(cached),
+        },
+    )
+
+
+def featured_report(request, owner: str, repo_name: str):
+    key = f"{owner}/{repo_name}"
+    featured = FEATURED_REPORTS.get(key)
+    if not featured:
+        return redirect("index")
+
+    repo_url = f"https://github.com/{key}"
+    md_report = featured["markdown"]
+    html_report = markdown.markdown(
+        md_report,
+        extensions=["tables", "fenced_code", "nl2br"],
+    )
+    _cache_report(request, repo_url, html_report, md_report)
+    return render(
+        request,
+        "analyzer/report_detail.html",
+        {
+            "repo_url": repo_url,
+            "repo_display": key,
+            "report": html_report,
+            "analyzed_at": featured["analyzed_at"],
+        },
+    )
 
 
 def download_pdf(request):

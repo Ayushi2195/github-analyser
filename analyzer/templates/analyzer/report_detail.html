@@ -1,0 +1,37 @@
+{% extends "analyzer/base.html" %}
+
+{% block title %}{{ repo_display }} Report - RepoFlow{% endblock %}
+
+{% block content %}
+<main class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <div class="mb-6 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+        <div>
+            <a href="/#gallery" class="inline-flex items-center gap-2 text-sm font-bold text-brand-600 hover:text-brand-700 transition-colors">
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 12H5m0 0 6 6m-6-6 6-6"/></svg>
+                Back to gallery
+            </a>
+            <p class="mt-5 text-xs font-bold uppercase tracking-wider text-brand-600">Saved report</p>
+            <h1 class="mt-2 text-3xl sm:text-4xl font-extrabold text-slate-900 break-all">{{ repo_display }}</h1>
+            <p class="mt-2 text-sm font-medium text-slate-500">Analyzed at {{ analyzed_at }}</p>
+        </div>
+        <div class="flex flex-wrap gap-3">
+            <a href="{{ repo_url }}" class="inline-flex items-center justify-center rounded-full border border-violet-100 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 shadow-sm hover:border-brand-200 hover:text-brand-600 transition-colors">
+                GitHub repo
+            </a>
+            <a href="{% url 'download_pdf' %}?repo_url={{ repo_url|urlencode }}" class="inline-flex items-center justify-center rounded-full bg-slate-900 px-5 py-2.5 text-sm font-bold text-white shadow-lg hover:bg-slate-800 transition-colors">
+                Download PDF
+            </a>
+        </div>
+    </div>
+
+    <section class="bg-white/95 backdrop-blur-xl rounded-3xl border border-violet-100 shadow-card overflow-hidden">
+        <div class="bg-gradient-to-r from-brand-600 to-violet-600 px-6 sm:px-8 py-5">
+            <p class="text-xs font-medium text-violet-200 uppercase tracking-wider">Analysis complete</p>
+            <h2 class="mt-1 font-bold text-white text-sm sm:text-base break-all">{{ repo_url }}</h2>
+        </div>
+        <div class="report-prose px-6 sm:px-10 py-8 sm:py-10 max-w-none">
+            {{ report|safe }}
+        </div>
+    </section>
+</main>
+{% endblock %}

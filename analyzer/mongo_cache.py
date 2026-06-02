@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from datetime import timezone as dt_timezone, timedelta
+from datetime import timedelta
 from typing import Any
 
 from django.utils import timezone

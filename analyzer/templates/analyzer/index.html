@@ -156,18 +156,18 @@
 
         <div id="galleryGrid" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
             {% for item in gallery_items %}
-            <article class="gallery-card bg-white/90 backdrop-blur rounded-2xl border border-violet-100 p-5 shadow-card hover:shadow-soft hover:-translate-y-1 transition-all" data-search="{{ item.full_name }} {{ item.owner }} {{ item.repo }} {{ item.primary_language }} {{ item.health_label }} {{ item.tech_stack|join:' ' }}" data-language="{{ item.primary_language|lower }}" data-health="{% if item.health_score >= 80 %}healthy{% else %}attention{% endif %}">
+            <a href="{{ item.report_url }}" class="gallery-card group flex flex-col bg-white/90 backdrop-blur rounded-2xl border border-violet-100 p-5 shadow-card hover:shadow-soft hover:-translate-y-1 hover:border-brand-300 focus:outline-none focus:ring-4 focus:ring-brand-100 transition-all" data-search="{{ item.full_name }} {{ item.owner }} {{ item.repo }} {{ item.repo_url }} {{ item.primary_language }} {{ item.health_label }} {{ item.tech_stack|join:' ' }}" data-language="{{ item.primary_language|lower }}" data-health="{% if item.health_score >= 80 %}healthy{% else %}attention{% endif %}">
                 <div class="flex items-start justify-between gap-4">
                     <div class="flex items-center gap-3 min-w-0">
                         <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-100 to-indigo-100 text-brand-600 font-extrabold">{{ item.repo|first|upper }}</span>
                         <div class="min-w-0">
                             <h3 class="font-bold text-slate-800 truncate">{{ item.repo }}</h3>
-                            <p class="text-sm font-medium text-slate-500 truncate">{{ item.owner }}</p>
+                            <p class="text-sm font-medium text-slate-500 truncate">{{ item.owner }} · {{ item.display_url }}</p>
                         </div>
                     </div>
-                    <a href="{{ item.repo_url }}" class="shrink-0 text-slate-400 hover:text-brand-600 transition-colors" aria-label="Open {{ item.full_name }} on GitHub">
-                        <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
-                    </a>
+                    {% if item.is_featured %}
+                    <span class="shrink-0 rounded-full bg-amber-50 px-3 py-1 text-xs font-bold text-amber-700">Featured</span>
+                    {% endif %}
                 </div>
                 <div class="mt-5">
                     <div class="flex items-center justify-between text-sm">
@@ -197,7 +197,11 @@
                         {{ item.analyzed_ago }}
                     </span>
                 </div>
-            </article>
+                <div class="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between text-sm font-bold text-brand-600">
+                    <span>{% if item.is_featured %}Analyze this repo{% else %}View report{% endif %}</span>
+                    <span class="transition-transform group-hover:translate-x-1">→</span>
+                </div>
+            </a>
             {% endfor %}
             <a href="#analyze" class="gallery-add-card min-h-[220px] rounded-2xl border-2 border-dashed border-violet-200 bg-white/60 p-5 flex flex-col items-center justify-center text-center text-slate-500 hover:border-brand-300 hover:text-brand-600 transition-colors">
                 <span class="text-4xl leading-none">+</span>
