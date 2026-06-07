@@ -27,6 +27,7 @@ from analyzer.pdf_generator import html_to_pdf
 from .crew.crew import run_analysis_result
 
 SESSION_REPORT_KEY = "repoflow_report"
+CACHE_REPORT_VERSION = 2
 
 FEATURED_REPOS = [
     {
@@ -109,19 +110,34 @@ React is a mature JavaScript UI library with a monorepo-style layout. The repo i
 
 ## 🐛 Open Issues
 
-Large open issue volume is normal for React because it receives ecosystem-wide bug reports, feature discussions, and framework integration questions.
+### Real Numbers Summary
+
+- **Open issues:** Data unavailable in this featured seed report
+- **Sampled issues:** Data unavailable
+
+Analyze this repository from the input form to generate exact issue numbers, titles, labels, and authors from the GitHub API.
 
 ---
 
 ## 🔀 Pull Requests
 
-PR activity is high and usually reflects ongoing maintenance, experiments, test updates, and framework improvements.
+### Real Numbers Summary
+
+- **Open pull requests:** Data unavailable in this featured seed report
+- **Sampled PRs:** Data unavailable
+
+Analyze this repository from the input form to generate exact PR numbers, authors, branch names, and URLs from the GitHub API.
 
 ---
 
 ## 🌿 Branch Analysis
 
-The default branch is used for ongoing development. Release and feature work is managed through disciplined branches and review workflows.
+### Real Numbers Summary
+
+- **Default branch:** Data unavailable in this featured seed report
+- **Branches sampled:** Data unavailable
+
+Analyze this repository from the input form to generate exact branch names and protection signals from the GitHub API.
 """,
     },
     "fastapi/fastapi": {
@@ -162,19 +178,34 @@ FastAPI is a Python web framework focused on type hints, API ergonomics, and aut
 
 ## 🐛 Open Issues
 
-Issues typically include framework questions, edge cases, documentation improvements, and integration requests.
+### Real Numbers Summary
+
+- **Open issues:** Data unavailable in this featured seed report
+- **Sampled issues:** Data unavailable
+
+Analyze this repository from the input form to generate exact issue numbers, titles, labels, and authors from the GitHub API.
 
 ---
 
 ## 🔀 Pull Requests
 
-PRs usually cover docs, validation behavior, typing improvements, and compatibility updates.
+### Real Numbers Summary
+
+- **Open pull requests:** Data unavailable in this featured seed report
+- **Sampled PRs:** Data unavailable
+
+Analyze this repository from the input form to generate exact PR numbers, authors, branch names, and URLs from the GitHub API.
 
 ---
 
 ## 🌿 Branch Analysis
 
-The repository uses a conventional default branch workflow with maintenance and release activity managed through reviewed pull requests.
+### Real Numbers Summary
+
+- **Default branch:** Data unavailable in this featured seed report
+- **Branches sampled:** Data unavailable
+
+Analyze this repository from the input form to generate exact branch names and protection signals from the GitHub API.
 """,
     },
     "django/django": {
@@ -215,19 +246,34 @@ Django is a mature Python web framework with a stable source layout, extensive t
 
 ## 🐛 Open Issues
 
-Issues are usually framework bugs, documentation refinements, compatibility updates, and feature discussions.
+### Real Numbers Summary
+
+- **Open issues:** Data unavailable in this featured seed report
+- **Sampled issues:** Data unavailable
+
+Analyze this repository from the input form to generate exact issue numbers, titles, labels, and authors from the GitHub API.
 
 ---
 
 ## 🔀 Pull Requests
 
-Pull requests tend to be reviewed carefully because framework changes affect a broad user base.
+### Real Numbers Summary
+
+- **Open pull requests:** Data unavailable in this featured seed report
+- **Sampled PRs:** Data unavailable
+
+Analyze this repository from the input form to generate exact PR numbers, authors, branch names, and URLs from the GitHub API.
 
 ---
 
 ## 🌿 Branch Analysis
 
-Django uses disciplined branching and release management, with development flowing through reviewed changes.
+### Real Numbers Summary
+
+- **Default branch:** Data unavailable in this featured seed report
+- **Branches sampled:** Data unavailable
+
+Analyze this repository from the input form to generate exact branch names and protection signals from the GitHub API.
 """,
     },
 }
@@ -325,7 +371,11 @@ def _render_markdown_report(repo_url: str) -> tuple[str, str]:
     normalized_url = normalize_repo_url(repo_url)
     try:
         cached = get_cached_analysis(normalized_url)
-        if cached and cached_markdown(cached):
+        if (
+            cached
+            and cached_markdown(cached)
+            and (cached.report_sections or {}).get("cache_version") == CACHE_REPORT_VERSION
+        ):
             md_report = cached_markdown(cached)
             html_report = cached_html(cached) or markdown.markdown(
                 md_report,
@@ -345,6 +395,7 @@ def _render_markdown_report(repo_url: str) -> tuple[str, str]:
         **result["sections"],
         "markdown": md_report,
         "html": html_report,
+        "cache_version": CACHE_REPORT_VERSION,
     }
     try:
         save_analysis_cache(
@@ -477,11 +528,18 @@ def cached_report(request, owner: str, repo_name: str):
             }),
         )
 
-    md_report = cached_markdown(cached)
-    html_report = cached_html(cached) or markdown.markdown(
-        md_report,
-        extensions=["tables", "fenced_code", "nl2br"],
-    )
+    if (cached.report_sections or {}).get("cache_version") != CACHE_REPORT_VERSION:
+        md_report, html_report = _render_markdown_report(repo_url)
+        try:
+            cached = get_cached_analysis(repo_url) or cached
+        except (GitHubAPIError, PyMongoError, OSError):
+            pass
+    else:
+        md_report = cached_markdown(cached)
+        html_report = cached_html(cached) or markdown.markdown(
+            md_report,
+            extensions=["tables", "fenced_code", "nl2br"],
+        )
     _cache_report(request, repo_url, html_report, md_report)
     return render(
         request,

@@ -3,7 +3,7 @@ Deterministic report sections — guaranteed detail for issues, PRs, and branche
 """
 from __future__ import annotations
 
-from collections import defaultdict
+from collections import Counter, defaultdict
 from typing import Any
 
 
@@ -13,17 +13,52 @@ def _label_group(labels: list[str]) -> str:
     return labels[0]
 
 
+def _top_counts(counter: Counter, limit: int = 5) -> str:
+    if not counter:
+        return "Data unavailable"
+    return " | ".join(f"{name}: {count}" for name, count in counter.most_common(limit))
+
+
+def _label_counts(items: list[dict]) -> Counter:
+    counts: Counter = Counter()
+    for item in items:
+        labels = item.get("labels", [])
+        if labels:
+            for label in labels:
+                counts[label] += 1
+        else:
+            counts["unlabeled"] += 1
+    return counts
+
+
+def _author_counts(items: list[dict]) -> Counter:
+    return Counter(item.get("author") or "unknown" for item in items)
+
+
 def build_issues_section(snapshot: dict[str, Any]) -> str:
     issues = snapshot.get("issues", [])
+    stats = snapshot.get("stats", {})
+    total = stats.get("open_issues_total", len(issues))
+    sampled = stats.get("issues_sampled", len(issues))
     lines = [
         "## Open Issues Report",
         "",
-        f"There are currently **{len(issues)}** open issues on GitHub.",
+        "### Real Numbers Summary",
+        "",
+        f"- **Open issues:** {total} total, {sampled} sampled",
+        f"- **Sample source:** GitHub API page 1, up to {stats.get('api_page_size', 100)} items fetched",
+        f"- **Label breakdown:** {_top_counts(_label_counts(issues))}",
+        f"- **Top reporters:** {_top_counts(_author_counts(issues), limit=3)}",
         "",
     ]
     if not issues:
-        lines.append("No open issues at this time.")
+        if total:
+            lines.append("Data unavailable: GitHub reported open issues, but no issue records were available in the sampled API response.")
+        else:
+            lines.append("No open issues at this time.")
         return "\n".join(lines)
+
+    lines.extend(["### Sampled Issue Details", ""])
 
     grouped: dict[str, list[dict]] = defaultdict(list)
     for issue in issues:
@@ -50,27 +85,29 @@ def build_issues_section(snapshot: dict[str, Any]) -> str:
 
 def build_pull_requests_section(snapshot: dict[str, Any]) -> str:
     prs = snapshot.get("pull_requests", [])
+    stats = snapshot.get("stats", {})
+    total = stats.get("open_prs_total", len(prs))
+    sampled = stats.get("pull_requests_sampled", len(prs))
+    draft_count = sum(1 for pr in prs if pr.get("draft"))
+    base_counts = Counter(pr.get("base") or "unknown" for pr in prs)
     lines = [
         "## Pull Request Analysis Report",
         "",
-        "### Introduction",
+        "### Real Numbers Summary",
+        "",
+        f"- **Open pull requests:** {total} total, {sampled} sampled",
+        f"- **Draft PRs in sample:** {draft_count}",
+        f"- **Target branches:** {_top_counts(base_counts)}",
+        f"- **Top PR authors:** {_top_counts(_author_counts(prs), limit=3)}",
         "",
     ]
     if not prs:
-        lines.append(
-            "There are currently **no open pull requests**. "
-            "The repository has no in-flight code review work at the moment."
-        )
-        lines.append("")
-        lines.append("### Conclusion")
-        lines.append("")
-        lines.append("No open PRs — development may be paused or changes land directly on branches.")
+        if total:
+            lines.append("Data unavailable: GitHub reported open PRs, but no PR records were available in the sampled API response.")
+        else:
+            lines.append("There are currently **no open pull requests**.")
         return "\n".join(lines)
 
-    lines.append(
-        f"This repository has **{len(prs)}** open pull request(s) awaiting review or merge."
-    )
-    lines.append("")
     lines.append("### Open Pull Requests")
     lines.append("")
 
@@ -88,24 +125,22 @@ def build_pull_requests_section(snapshot: dict[str, Any]) -> str:
             f"targeting `{pr.get('base')}`."
         )
 
-    lines.append("")
-    lines.append("### Conclusion")
-    lines.append("")
-    if len(prs) == 1:
-        lines.append(
-            f"There is **1** open pull request. Review and merge when checks pass."
-        )
-    else:
-        lines.append(
-            f"There are **{len(prs)}** open pull requests — prioritize review to reduce backlog."
-        )
     return "\n".join(lines)
 
 
 def build_branches_section(snapshot: dict[str, Any]) -> str:
     branches = snapshot.get("branches", [])
     default = snapshot.get("meta", {}).get("default_branch", "main")
+    stats = snapshot.get("stats", {})
+    protected_count = sum(1 for branch in branches if branch.get("protected"))
     lines = ["## Branches", ""]
+
+    lines.append("### Real Numbers Summary")
+    lines.append("")
+    lines.append(f"- **Default branch:** {default}")
+    lines.append(f"- **Branches sampled:** {stats.get('branches_sampled', len(branches))}")
+    lines.append(f"- **Protected branches in sample:** {protected_count}")
+    lines.append("")
 
     lines.append("### Main Branch")
     lines.append("")

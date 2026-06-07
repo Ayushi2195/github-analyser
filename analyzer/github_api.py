@@ -13,6 +13,8 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 GITHUB_TOKEN = os.environ.get("GITHUB_PERSONAL_ACCESS_TOKEN", "")
+API_PAGE_SIZE = 100
+REPORT_SAMPLE_LIMIT = 50
 HEADERS = {
     "Accept": "application/vnd.github+json",
     "X-GitHub-Api-Version": "2022-11-28",
@@ -69,6 +71,16 @@ def _get(path: str, params: dict | None = None) -> Any:
     return response.json()
 
 
+def _search_total_count(query: str) -> int | None:
+    try:
+        data = _get("/search/issues", {"q": query, "per_page": 1, "page": 1})
+        if isinstance(data, dict):
+            return data.get("total_count")
+    except GitHubAPIError:
+        return None
+    return None
+
+
 _snapshot_cache: dict[str, dict[str, Any]] = {}
 
 
@@ -87,9 +99,17 @@ def fetch_repo_snapshot(repo_url: str) -> dict[str, Any]:
 
     meta = _get(base)
     contents = _get(f"{base}/contents/")
-    issues_raw = _get(f"{base}/issues", {"state": "open", "per_page": 30})
-    prs_raw = _get(f"{base}/pulls", {"state": "open", "per_page": 30})
-    branches_raw = _get(f"{base}/branches", {"per_page": 30})
+    issues_raw = _get(
+        f"{base}/issues",
+        {"state": "open", "per_page": API_PAGE_SIZE, "page": 1},
+    )
+    prs_raw = _get(
+        f"{base}/pulls",
+        {"state": "open", "per_page": API_PAGE_SIZE, "page": 1},
+    )
+    branches_raw = _get(f"{base}/branches", {"per_page": API_PAGE_SIZE, "page": 1})
+    open_issues_total = _search_total_count(f"repo:{owner}/{repo} is:issue is:open")
+    open_prs_total = _search_total_count(f"repo:{owner}/{repo} is:pr is:open")
 
     files = (
         [{"name": item["name"], "type": item["type"]} for item in contents]
@@ -110,7 +130,7 @@ def fetch_repo_snapshot(repo_url: str) -> dict[str, Any]:
         }
         for issue in (issues_raw if isinstance(issues_raw, list) else [])
         if "pull_request" not in issue
-    ]
+    ][:REPORT_SAMPLE_LIMIT]
     pull_requests = [
         {
             "number": pr.get("number"),
@@ -123,7 +143,7 @@ def fetch_repo_snapshot(repo_url: str) -> dict[str, Any]:
             "draft": pr.get("draft", False),
         }
         for pr in (prs_raw if isinstance(prs_raw, list) else [])
-    ]
+    ][:REPORT_SAMPLE_LIMIT]
     branches = [
         {
             "name": branch["name"],
@@ -154,6 +174,15 @@ def fetch_repo_snapshot(repo_url: str) -> dict[str, Any]:
         "issues": issues,
         "pull_requests": pull_requests,
         "branches": branches,
+        "stats": {
+            "open_issues_total": open_issues_total if open_issues_total is not None else len(issues),
+            "open_prs_total": open_prs_total if open_prs_total is not None else len(pull_requests),
+            "issues_sampled": len(issues),
+            "pull_requests_sampled": len(pull_requests),
+            "branches_sampled": len(branches),
+            "api_page_size": API_PAGE_SIZE,
+            "report_sample_limit": REPORT_SAMPLE_LIMIT,
+        },
     }
     _snapshot_cache[key] = snapshot
     return snapshot

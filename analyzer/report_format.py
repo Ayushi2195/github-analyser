@@ -47,6 +47,8 @@ Rules:
 - Mention EVERY issue from the data (do not skip any).
 - Use real @author logins and issue numbers from JSON.
 - Use the exact issue URLs provided in the data.
+- NEVER make general statements such as "large issue volume is normal".
+- If a field is missing, write "Data unavailable" instead of guessing.
 """
 
 PRS_FORMAT = """
@@ -65,6 +67,10 @@ If any PRs exist, one bullet each:
 ### Conclusion
 Summarize count and what it means for the project (review backlog, active development, etc.).
 If zero PRs: state that clearly.
+Rules:
+- Use only the PR JSON provided.
+- NEVER make general statements such as "PR activity is high".
+- If a field is missing, write "Data unavailable" instead of guessing.
 """
 
 BRANCHES_FORMAT = """
@@ -86,4 +92,8 @@ List release/* or version-like branches, or state "No explicit release branches 
 List branches where protected=true, or state none are protected and recommend protecting main.
 
 End with 1-2 sentences of workflow recommendation.
+Rules:
+- Use exact branch names from JSON.
+- NEVER describe branch workflow unless the sampled branch data supports it.
+- If data is missing, say "Data unavailable".
 """

@@ -37,6 +37,7 @@ def get_repo_issues(repo_url: str) -> str:
             "repo_url": data["repo_url"],
             "open_issues": data["issues"],
             "count": len(data["issues"]),
+            "stats": data.get("stats", {}),
         },
         indent=2,
     )
@@ -51,6 +52,7 @@ def get_repo_pull_requests(repo_url: str) -> str:
             "repo_url": data["repo_url"],
             "open_pull_requests": data["pull_requests"],
             "count": len(data["pull_requests"]),
+            "stats": data.get("stats", {}),
         },
         indent=2,
     )
@@ -65,6 +67,7 @@ def get_repo_branches(repo_url: str) -> str:
             "default_branch": data["meta"].get("default_branch"),
             "branches": data["branches"],
             "count": len(data["branches"]),
+            "stats": data.get("stats", {}),
         },
         indent=2,
     )
