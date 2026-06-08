@@ -32,259 +32,9 @@ from analyzer.report_builder import _branch_category
 from .crew.crew import run_analysis_result
 
 SESSION_REPORT_KEY = "repoflow_report"
-CACHE_REPORT_VERSION = 3
+CACHE_REPORT_VERSION = 4
 PDF_CACHE_VERSION = 1
 PDF_STORAGE_DIR = Path(settings.BASE_DIR) / "generated_reports"
-
-FEATURED_REPOS = [
-    {
-        "full_name": "facebook/react",
-        "owner": "facebook",
-        "repo": "react",
-        "repo_url": "https://github.com/facebook/react",
-        "health_score": 92,
-        "health_label": "Healthy",
-        "primary_language": "JavaScript",
-        "tech_stack": ["JavaScript", "UI", "MIT"],
-        "stars": 228000,
-        "branch_count": 12,
-        "analyzed_ago": "Featured",
-    },
-    {
-        "full_name": "fastapi/fastapi",
-        "owner": "fastapi",
-        "repo": "fastapi",
-        "repo_url": "https://github.com/fastapi/fastapi",
-        "health_score": 91,
-        "health_label": "Healthy",
-        "primary_language": "Python",
-        "tech_stack": ["Python", "API", "MIT"],
-        "stars": 86000,
-        "branch_count": 8,
-        "analyzed_ago": "Featured",
-    },
-    {
-        "full_name": "django/django",
-        "owner": "django",
-        "repo": "django",
-        "repo_url": "https://github.com/django/django",
-        "health_score": 89,
-        "health_label": "Healthy",
-        "primary_language": "Python",
-        "tech_stack": ["Python", "Web", "BSD-3-Clause"],
-        "stars": 83000,
-        "branch_count": 10,
-        "analyzed_ago": "Featured",
-    },
-]
-
-FEATURED_REPORTS = {
-    "facebook/react": {
-        "analyzed_at": "Featured seed report",
-        "markdown": """# 📊 GitHub Repository Analysis Report
-
-**Repository:** [facebook/react](https://github.com/facebook/react)
-
----
-
-## 🏥 Repository Health
-
-**Score:** 92/100 (Healthy)
-
-**Signals:**
-- Mature repository structure with clear package boundaries
-- Strong ecosystem documentation and active maintenance
-- Large issue/PR volume is expected for a project at this scale
-
----
-
-## 🗂️ Repository Structure
-
-React is a mature JavaScript UI library with a monorepo-style layout. The repo is organized around packages, build tooling, examples, fixtures, and documentation.
-
-### Tech Stack
-- JavaScript
-- Node.js package tooling
-- MIT license
-
-### Key Files and Folders
-- **packages/**: Core React packages and supporting modules.
-- **fixtures/**: Example apps and integration fixtures.
-- **scripts/**: Build, test, and release automation.
-- **README.md**: Project overview and onboarding entry point.
-
----
-
-## 🐛 Open Issues
-
-### Real Numbers Summary
-
-- **Open issues:** Data unavailable in this featured seed report
-- **Sampled issues:** Data unavailable
-
-Analyze this repository from the input form to generate exact issue numbers, titles, labels, and authors from the GitHub API.
-
----
-
-## 🔀 Pull Requests
-
-### Real Numbers Summary
-
-- **Open pull requests:** Data unavailable in this featured seed report
-- **Sampled PRs:** Data unavailable
-
-Analyze this repository from the input form to generate exact PR numbers, authors, branch names, and URLs from the GitHub API.
-
----
-
-## 🌿 Branch Analysis
-
-### Real Numbers Summary
-
-- **Default branch:** Data unavailable in this featured seed report
-- **Branches sampled:** Data unavailable
-
-Analyze this repository from the input form to generate exact branch names and protection signals from the GitHub API.
-""",
-    },
-    "fastapi/fastapi": {
-        "analyzed_at": "Featured seed report",
-        "markdown": """# 📊 GitHub Repository Analysis Report
-
-**Repository:** [fastapi/fastapi](https://github.com/fastapi/fastapi)
-
----
-
-## 🏥 Repository Health
-
-**Score:** 91/100 (Healthy)
-
-**Signals:**
-- Clear Python project identity and documentation
-- Strong API-focused ecosystem with active maintenance
-- Healthy public contribution workflow
-
----
-
-## 🗂️ Repository Structure
-
-FastAPI is a Python web framework focused on type hints, API ergonomics, and automatic documentation. The repository layout is documentation-heavy and contributor-friendly.
-
-### Tech Stack
-- Python
-- ASGI ecosystem
-- MIT license
-
-### Key Files and Folders
-- **fastapi/**: Framework source package.
-- **docs/**: User-facing documentation and examples.
-- **tests/**: Regression and behavior coverage.
-- **pyproject.toml**: Python project configuration.
-
----
-
-## 🐛 Open Issues
-
-### Real Numbers Summary
-
-- **Open issues:** Data unavailable in this featured seed report
-- **Sampled issues:** Data unavailable
-
-Analyze this repository from the input form to generate exact issue numbers, titles, labels, and authors from the GitHub API.
-
----
-
-## 🔀 Pull Requests
-
-### Real Numbers Summary
-
-- **Open pull requests:** Data unavailable in this featured seed report
-- **Sampled PRs:** Data unavailable
-
-Analyze this repository from the input form to generate exact PR numbers, authors, branch names, and URLs from the GitHub API.
-
----
-
-## 🌿 Branch Analysis
-
-### Real Numbers Summary
-
-- **Default branch:** Data unavailable in this featured seed report
-- **Branches sampled:** Data unavailable
-
-Analyze this repository from the input form to generate exact branch names and protection signals from the GitHub API.
-""",
-    },
-    "django/django": {
-        "analyzed_at": "Featured seed report",
-        "markdown": """# 📊 GitHub Repository Analysis Report
-
-**Repository:** [django/django](https://github.com/django/django)
-
----
-
-## 🏥 Repository Health
-
-**Score:** 89/100 (Healthy)
-
-**Signals:**
-- Long-running mature framework with stable conventions
-- Deep test suite and documentation culture
-- Large contributor surface requires careful review discipline
-
----
-
-## 🗂️ Repository Structure
-
-Django is a mature Python web framework with a stable source layout, extensive tests, and strong documentation. The repository is built for long-term maintenance.
-
-### Tech Stack
-- Python
-- Web framework
-- BSD license
-
-### Key Files and Folders
-- **django/**: Framework source package.
-- **tests/**: Large test suite for framework behavior.
-- **docs/**: Project documentation and release notes.
-- **setup.cfg / pyproject.toml**: Packaging and tooling configuration.
-
----
-
-## 🐛 Open Issues
-
-### Real Numbers Summary
-
-- **Open issues:** Data unavailable in this featured seed report
-- **Sampled issues:** Data unavailable
-
-Analyze this repository from the input form to generate exact issue numbers, titles, labels, and authors from the GitHub API.
-
----
-
-## 🔀 Pull Requests
-
-### Real Numbers Summary
-
-- **Open pull requests:** Data unavailable in this featured seed report
-- **Sampled PRs:** Data unavailable
-
-Analyze this repository from the input form to generate exact PR numbers, authors, branch names, and URLs from the GitHub API.
-
----
-
-## 🌿 Branch Analysis
-
-### Real Numbers Summary
-
-- **Default branch:** Data unavailable in this featured seed report
-- **Branches sampled:** Data unavailable
-
-Analyze this repository from the input form to generate exact branch names and protection signals from the GitHub API.
-""",
-    },
-}
-
 
 def _format_count(value: int) -> str:
     if value >= 1000:
@@ -292,57 +42,38 @@ def _format_count(value: int) -> str:
     return str(value)
 
 
-def _featured_gallery_items() -> list[dict]:
-    return [
-        {
-            **item,
-            "stars": _format_count(item["stars"]),
-            "display_url": item["repo_url"].replace("https://", ""),
-            "report_url": reverse(
-                "featured_report",
-                kwargs={"owner": item["owner"], "repo_name": item["repo"]},
-            ),
-            "is_featured": True,
-            "analyzed_at_label": "Featured seed report",
-        }
-        for item in FEATURED_REPOS
-    ]
+def _gallery_item(analysis: RepoAnalysisCache) -> dict:
+    return {
+        "full_name": f"{analysis.owner}/{analysis.repo_name}",
+        "owner": analysis.owner,
+        "repo": analysis.repo_name,
+        "repo_url": analysis.repo_url,
+        "display_url": analysis.repo_url.replace("https://", ""),
+        "report_url": reverse(
+            "cached_report",
+            kwargs={"owner": analysis.owner, "repo_name": analysis.repo_name},
+        ),
+        "is_featured": bool(getattr(analysis, "is_featured", False)),
+        "health_score": analysis.health_score or 0,
+        "health_label": analysis.health_label or "Unknown",
+        "primary_language": analysis.primary_language or "Unknown",
+        "tech_stack": analysis.tech_stack or [analysis.primary_language or "Repo"],
+        "stars": _format_count(analysis.stars or 0),
+        "branch_count": cached_branch_count(analysis),
+        "analyzed_ago": analyzed_ago_label(analysis),
+        "analyzed_at_label": analyzed_at_label(analysis),
+    }
 
 
 def _gallery_items() -> list[dict]:
-    analyses = safe_cached_analyses(limit=6)
-    items = [
-        {
-            "full_name": f"{analysis.owner}/{analysis.repo_name}",
-            "owner": analysis.owner,
-            "repo": analysis.repo_name,
-            "repo_url": analysis.repo_url,
-            "display_url": analysis.repo_url.replace("https://", ""),
-            "report_url": reverse(
-                "cached_report",
-                kwargs={"owner": analysis.owner, "repo_name": analysis.repo_name},
-            ),
-            "is_featured": False,
-            "health_score": analysis.health_score or 0,
-            "health_label": analysis.health_label or "Unknown",
-            "primary_language": analysis.primary_language or "Unknown",
-            "tech_stack": analysis.tech_stack or [analysis.primary_language or "Repo"],
-            "stars": _format_count(analysis.stars or 0),
-            "branch_count": cached_branch_count(analysis),
-            "analyzed_ago": analyzed_ago_label(analysis),
-            "analyzed_at_label": analyzed_at_label(analysis),
-        }
-        for analysis in analyses
-    ]
-    if len(items) >= 6:
-        return items[:6]
+    real_analyses = safe_cached_analyses(limit=6, is_featured=False)
+    if len(real_analyses) >= 6:
+        return [_gallery_item(analysis) for analysis in real_analyses[:6]]
 
-    featured = _featured_gallery_items()
-    if not items:
-        return featured
-
-    featured_needed = max(0, 4 - len(items))
-    return items + featured[:featured_needed]
+    featured_needed = min(3, 6 - len(real_analyses))
+    featured_analyses = safe_cached_analyses(limit=featured_needed, is_featured=True)
+    analyses = [*real_analyses, *featured_analyses]
+    return [_gallery_item(analysis) for analysis in analyses]
 
 
 def _cached_analysis_count() -> int:
@@ -356,7 +87,7 @@ def _cached_analysis_count() -> int:
 def _homepage_context(extra: dict | None = None) -> dict:
     total_real = _cached_analysis_count()
     gallery = _gallery_items()
-    avg_score = round(mean(item["health_score"] for item in gallery))
+    avg_score = round(mean(item["health_score"] for item in gallery)) if gallery else 0
     context = {
         "gallery_items": gallery,
         "repos_analyzed": f"{total_real:,}",
@@ -753,31 +484,6 @@ def cached_report(request, owner: str, repo_name: str):
             "repo_display": f"{owner}/{repo_name}",
             "report": html_report,
             "analyzed_at": analyzed_at_label(cached),
-        },
-    )
-
-
-def featured_report(request, owner: str, repo_name: str):
-    key = f"{owner}/{repo_name}"
-    featured = FEATURED_REPORTS.get(key)
-    if not featured:
-        return redirect("index")
-
-    repo_url = f"https://github.com/{key}"
-    md_report = featured["markdown"]
-    html_report = markdown.markdown(
-        md_report,
-        extensions=["tables", "fenced_code", "nl2br"],
-    )
-    _cache_report(request, repo_url, html_report, md_report)
-    return render(
-        request,
-        "analyzer/report_detail.html",
-        {
-            "repo_url": repo_url,
-            "repo_display": key,
-            "report": html_report,
-            "analyzed_at": featured["analyzed_at"],
         },
     )
 

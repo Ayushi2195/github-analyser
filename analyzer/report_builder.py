@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import re
 from collections import Counter, defaultdict
+from datetime import datetime, timezone
 from typing import Any
 
 
@@ -34,6 +35,91 @@ def _label_counts(items: list[dict]) -> Counter:
 
 def _author_counts(items: list[dict]) -> Counter:
     return Counter(item.get("author") or "unknown" for item in items)
+
+
+def _parse_github_date(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _stale_issue_count(issues: list[dict], days: int = 90) -> int:
+    now = datetime.now(timezone.utc)
+    stale = 0
+    for issue in issues:
+        created = _parse_github_date(issue.get("created_at"))
+        if created and (now - created).days >= days:
+            stale += 1
+    return stale
+
+
+def _good_first_issue(issues: list[dict]) -> dict | None:
+    preferred_terms = ("good first issue", "good-first-issue", "help wanted", "documentation", "docs")
+    for issue in issues:
+        labels = " ".join(issue.get("labels", [])).lower()
+        title = (issue.get("title") or "").lower()
+        if any(term in labels or term in title for term in preferred_terms):
+            return issue
+    return issues[0] if issues else None
+
+
+def build_executive_summary(snapshot: dict[str, Any], health: dict[str, Any]) -> str:
+    issues = snapshot.get("issues", [])
+    prs = snapshot.get("pull_requests", [])
+    branches = snapshot.get("branches", [])
+    stats = snapshot.get("stats", {})
+    open_issues_total = stats.get("open_issues_total", len(issues))
+    open_prs_total = stats.get("open_prs_total", len(prs))
+    stale_count = _stale_issue_count(issues)
+    protected_count = sum(1 for branch in branches if branch.get("protected"))
+    good_first = _good_first_issue(issues)
+    health_score = health.get("score", 0)
+    health_label = health.get("label", "Unknown")
+
+    lines = [
+        "## Critical Findings / Risks / Recommendations",
+        "",
+        "### Critical Findings",
+        "",
+        f"- 🚨 **{stale_count} stale issue(s) over 90 days** in the sampled issue set.",
+        f"- 📊 **Repository health:** {health_score}/100 ({health_label}).",
+        "",
+        "### Risks",
+        "",
+    ]
+    if protected_count:
+        lines.append(f"- ✅ **{protected_count} protected branch(es)** found in the sampled branch list.")
+    else:
+        lines.append("- ⚠️ **No protected branches detected** in the sampled branch list.")
+
+    lines.extend(["", "### Recommendations", ""])
+    if good_first:
+        author = good_first.get("author") or "unknown"
+        lines.append(
+            f"- 💡 **Good first issue candidate:** #{good_first.get('number')} "
+            f"({good_first.get('title')}) by @{author}."
+        )
+    elif open_issues_total == 0:
+        lines.append(
+            "- 💡 **No open GitHub issues found;** this repo may use an external issue tracker "
+            "or handle work outside public GitHub issues."
+        )
+    else:
+        lines.append("- 💡 **Good first issue candidate:** Data unavailable.")
+    if open_prs_total == 0:
+        lines.append(
+            "- 🔀 **No open pull requests found;** there may be no active public contribution queue right now."
+        )
+    if not protected_count:
+        default = snapshot.get("meta", {}).get("default_branch", "main")
+        lines.append(f"- 🔒 Protect **{default}** to reduce accidental direct pushes.")
+    if stale_count:
+        lines.append("- 🧹 Triage stale issues first; close outdated items or add status labels.")
+
+    return "\n".join(lines)
 
 
 def _clean_branch_token(value: str) -> str:
@@ -164,10 +250,6 @@ def build_pull_requests_section(snapshot: dict[str, Any]) -> str:
             f"- **PR #{pr['number']}:** \"{pr['title']}\"{draft} - "
             f"submitted by @{author}, **{pr.get('head')}** -> **{pr.get('base')}** - "
             f"[View PR]({url})"
-        )
-        lines.append(
-            f"  - Likely intent: changes on branch `{pr.get('head')}` "
-            f"targeting `{pr.get('base')}`."
         )
 
     return "\n".join(lines)

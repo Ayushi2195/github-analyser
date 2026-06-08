@@ -9,6 +9,7 @@ from mongoengine import (
     DateTimeField,
     DictField,
     Document,
+    BooleanField,
     IntField,
     ListField,
     StringField,
@@ -43,10 +44,12 @@ class RepoAnalysisCache(Document):
     report_sections = DictField()
 
     pdf_path = StringField()
+    is_featured = BooleanField(default=False)
+    show_in_gallery = BooleanField(default=True)
 
     meta = {
         "collection": "analyzed-reports",
-        "indexes": ["repo_url", "-analyzed_at", "primary_language", "health_label"],
+        "indexes": ["repo_url", "-analyzed_at", "primary_language", "health_label", "show_in_gallery", "is_featured"],
     }
 
 
@@ -111,6 +114,8 @@ def save_analysis_cache(
         set__tech_stack=_tech_stack(snapshot),
         set__report_sections=report_sections,
         set__pdf_path=pdf_path,
+        set__is_featured=False,
+        set__show_in_gallery=True,
     )
 
 
@@ -178,9 +183,12 @@ def mongo_is_available() -> bool:
         return False
 
 
-def safe_cached_analyses(limit: int = 5) -> list[RepoAnalysisCache]:
+def safe_cached_analyses(limit: int = 5, is_featured: bool | None = None) -> list[RepoAnalysisCache]:
     try:
         connect_mongo()
-        return list(RepoAnalysisCache.objects.order_by("-analyzed_at")[:limit])
+        filters = {"show_in_gallery": True}
+        if is_featured is not None:
+            filters["is_featured"] = is_featured
+        return list(RepoAnalysisCache.objects(**filters).order_by("-analyzed_at")[:limit])
     except (GitHubAPIError, PyMongoError, OSError):
         return []

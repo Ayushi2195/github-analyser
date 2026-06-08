@@ -9,6 +9,7 @@ from analyzer.github_api import clear_snapshot_cache, fetch_repo_snapshot
 from analyzer.health import compute_health_score
 from analyzer.report_builder import (
     build_branches_section,
+    build_executive_summary,
     build_issues_section,
     build_pull_requests_section,
 )
@@ -49,6 +50,7 @@ def run_analysis_result(repo_url: str) -> dict:
     clear_snapshot_cache()
 
     structure_md = _task_output(structure)
+    summary_md = build_executive_summary(snapshot, health)
     health_md = _health_section(snapshot)
     issues_md = build_issues_section(snapshot)
     prs_md = build_pull_requests_section(snapshot)
@@ -57,6 +59,10 @@ def run_analysis_result(repo_url: str) -> dict:
     markdown_report = f"""# 📊 GitHub Repository Analysis Report
 
 **Repository:** [{full_name}]({repo_url})
+
+---
+
+{summary_md}
 
 ---
 
@@ -95,6 +101,7 @@ def run_analysis_result(repo_url: str) -> dict:
         "health": health,
         "sections": {
             "health": health_md,
+            "summary": summary_md,
             "structure": structure_md,
             "issues": issues_md,
             "pull_requests": prs_md,
