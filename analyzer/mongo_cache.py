@@ -114,6 +114,12 @@ def save_analysis_cache(
     )
 
 
+def update_pdf_path(repo_url: str, pdf_path: str) -> None:
+    connect_mongo()
+    normalized_url = normalize_repo_url(repo_url)
+    RepoAnalysisCache.objects(repo_url=normalized_url).update_one(set__pdf_path=pdf_path)
+
+
 def cached_markdown(cached: RepoAnalysisCache) -> str:
     sections = cached.report_sections or {}
     return sections.get("markdown", "")

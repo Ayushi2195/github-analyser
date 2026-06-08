@@ -3,6 +3,7 @@ Deterministic report sections — guaranteed detail for issues, PRs, and branche
 """
 from __future__ import annotations
 
+import re
 from collections import Counter, defaultdict
 from typing import Any
 
@@ -33,6 +34,50 @@ def _label_counts(items: list[dict]) -> Counter:
 
 def _author_counts(items: list[dict]) -> Counter:
     return Counter(item.get("author") or "unknown" for item in items)
+
+
+def _clean_branch_token(value: str) -> str:
+    value = value.replace("_", " ").replace("-", " ").replace("/", " / ")
+    return " ".join(value.split())
+
+
+def _branch_category(name: str) -> tuple[str, str]:
+    lower = name.lower()
+    if lower.startswith("dependabot/"):
+        return "Dependabot updates", "Automated dependency management branch created by Dependabot."
+    if lower.startswith("copilot/"):
+        issue_hint = ""
+        match = re.search(r"(?:fix|issue)[-/]?(\d+)", lower)
+        if match:
+            issue_hint = f" for issue #{match.group(1)}"
+        return "Copilot suggestions", f"GitHub Copilot suggested code change{issue_hint}."
+    if lower.startswith(("ci/", "ci-", "test/", "tests/", "e2e/", "build/", "workflow/", "github-actions/")) or "ci" in lower or "e2e" in lower:
+        return "CI/CD work", f"CI/CD or test automation work: {_clean_branch_token(name)}."
+    if lower.startswith(("fix/", "fix-", "bug/", "bugfix/", "bugfix-", "hotfix/", "hotfix-")) or "fix" in lower:
+        topic = re.sub(r"^(bugfix|hotfix|fix|bug)[/-]?", "", name, flags=re.IGNORECASE)
+        return "Bug fixes", f"Bug fix targeting {_clean_branch_token(topic) or 'a reported defect'}."
+    if lower.startswith(("feature/", "feature-", "feat/", "feat-")):
+        topic = re.sub(r"^(feature|feat)[/-]?", "", name, flags=re.IGNORECASE)
+        return "Feature branches", f"Feature work for {_clean_branch_token(topic) or 'a new capability'}."
+    if lower.startswith(("release/", "release-", "rel/", "v")):
+        return "Release branches", f"Release or version preparation branch: {_clean_branch_token(name)}."
+    if lower.startswith(("docs/", "docs-", "doc/", "doc-")):
+        topic = re.sub(r"^(docs|doc)[/-]?", "", name, flags=re.IGNORECASE)
+        return "Documentation", f"Documentation update for {_clean_branch_token(topic) or 'project docs'}."
+    return "Other branches", f"Branch name indicates {_clean_branch_token(name)}."
+
+
+def _branch_interest_score(name: str, category: str) -> int:
+    lower = name.lower()
+    score = 0
+    if category in {"Feature branches", "Bug fixes", "CI/CD work", "Documentation"}:
+        score += 5
+    if category in {"Dependabot updates", "Copilot suggestions"}:
+        score -= 5
+    if any(token in lower for token in ("memory", "security", "auth", "database", "migration", "api", "e2e", "performance")):
+        score += 4
+    score += min(len(name) // 12, 4)
+    return score
 
 
 def build_issues_section(snapshot: dict[str, Any]) -> str:
@@ -133,6 +178,8 @@ def build_branches_section(snapshot: dict[str, Any]) -> str:
     default = snapshot.get("meta", {}).get("default_branch", "main")
     stats = snapshot.get("stats", {})
     protected_count = sum(1 for branch in branches if branch.get("protected"))
+    prs = snapshot.get("pull_requests", [])
+    pr_targets = Counter(pr.get("base") or "unknown" for pr in prs)
     lines = ["## Branches", ""]
 
     lines.append("### Real Numbers Summary")
@@ -142,53 +189,94 @@ def build_branches_section(snapshot: dict[str, Any]) -> str:
     lines.append(f"- **Protected branches in sample:** {protected_count}")
     lines.append("")
 
-    lines.append("### Main Branch")
-    lines.append("")
-    lines.append(f"The main/default branch is: **{default}**")
-    lines.append("")
-
-    feature_prefixes = ("feat", "feature", "dev", "fix", "bug", "soda", "mcp", "query")
-    release_prefixes = ("release", "rel", "v")
-
-    feature, release, other, protected = [], [], [], []
+    categorized: dict[str, list[dict]] = defaultdict(list)
+    protected = []
     for branch in branches:
-        name = branch["name"]
-        if name == default:
+        name = branch.get("name", "")
+        if not name:
             continue
         if branch.get("protected"):
             protected.append(name)
-        lower = name.lower()
-        if lower.startswith(release_prefixes):
-            release.append(name)
-        elif lower.startswith(feature_prefixes) or "-" in name:
-            feature.append(name)
+        if name == default:
+            categorized["Default branch"].append(
+                {
+                    "name": name,
+                    "description": "Primary default branch for repository development.",
+                    "score": 0,
+                }
+            )
+            continue
+        category, description = _branch_category(name)
+        categorized[category].append(
+            {
+                "name": name,
+                "description": description,
+                "score": _branch_interest_score(name, category),
+            }
+        )
+
+    category_order = [
+        "Default branch",
+        "Dependabot updates",
+        "Copilot suggestions",
+        "CI/CD work",
+        "Feature branches",
+        "Bug fixes",
+        "Documentation",
+        "Release branches",
+        "Other branches",
+    ]
+
+    lines.append("### Branch Categories")
+    lines.append("")
+    for category in category_order:
+        group = categorized.get(category, [])
+        if not group:
+            continue
+        example_names = ", ".join(item["name"] for item in group[:3])
+        suffix = f" Examples: {example_names}." if example_names else ""
+        if category == "Dependabot updates":
+            meaning = "automated dependency management"
+        elif category == "Copilot suggestions":
+            meaning = "AI-suggested fixes or code changes"
+        elif category == "CI/CD work":
+            meaning = "pipeline, workflow, or test automation work"
+        elif category == "Bug fixes":
+            meaning = "defect fixes inferred from branch names"
+        elif category == "Feature branches":
+            meaning = "new feature or capability work"
+        elif category == "Documentation":
+            meaning = "documentation updates"
+        elif category == "Release branches":
+            meaning = "release or version preparation"
+        elif category == "Default branch":
+            meaning = "primary development line"
         else:
-            other.append(name)
-
-    lines.append("### Feature Branches")
+            meaning = "branches that do not match a stronger naming pattern"
+        lines.append(f"- **{category}:** {len(group)} branch(es) — {meaning}.{suffix}")
     lines.append("")
-    if feature:
-        for name in sorted(feature):
-            lines.append(f"- **{name}** — likely used for feature or topic development.")
+
+    interesting = sorted(
+        [
+            item
+            for category, group in categorized.items()
+            if category not in {"Default branch", "Dependabot updates", "Copilot suggestions"}
+            for item in group
+        ],
+        key=lambda item: item["score"],
+        reverse=True,
+    )[:5]
+
+    lines.append("### Most Interesting Non-Automated Branches")
+    lines.append("")
+    if interesting:
+        for item in interesting:
+            open_prs = pr_targets.get(item["name"], 0)
+            pr_text = f"{open_prs} open PR(s) target this branch" if open_prs else "No sampled open PRs target this branch"
+            lines.append(f"- **{item['name']}** — {item['description']} {pr_text}.")
     else:
-        lines.append("No obvious feature branches (or only default branch exists).")
+        lines.append("No non-automated branch names with enough signal were found in the sampled branch list.")
     lines.append("")
-
-    lines.append("### Release Branches")
-    lines.append("")
-    if release:
-        for name in sorted(release):
-            lines.append(f"- **{name}**")
-    else:
-        lines.append("No explicit release branches identified in the branch list.")
-    lines.append("")
-
-    if other:
-        lines.append("### Other Branches")
-        lines.append("")
-        for name in sorted(other):
-            lines.append(f"- **{name}**")
-        lines.append("")
 
     lines.append("### Protected Branches")
     lines.append("")
@@ -197,8 +285,8 @@ def build_branches_section(snapshot: dict[str, Any]) -> str:
             lines.append(f"- **{name}** — protected")
     else:
         lines.append(
-            "No protected branches are configured (all branches show `protected: false`). "
-            "Consider protecting **main** to prevent accidental direct pushes."
+            "No protected branches were found in the sampled branch list. "
+            f"Consider protecting **{default}** if direct pushes should be restricted."
         )
     lines.append("")
 

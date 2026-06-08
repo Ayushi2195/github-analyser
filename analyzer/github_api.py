@@ -15,6 +15,7 @@ from urllib3.util.retry import Retry
 GITHUB_TOKEN = os.environ.get("GITHUB_PERSONAL_ACCESS_TOKEN", "")
 API_PAGE_SIZE = 100
 REPORT_SAMPLE_LIMIT = 50
+BRANCH_DETAIL_LIMIT = 20
 HEADERS = {
     "Accept": "application/vnd.github+json",
     "X-GitHub-Api-Version": "2022-11-28",
@@ -148,9 +149,26 @@ def fetch_repo_snapshot(repo_url: str) -> dict[str, Any]:
         {
             "name": branch["name"],
             "protected": branch.get("protected", False),
+            "last_commit_date": None,
         }
         for branch in (branches_raw if isinstance(branches_raw, list) else [])
     ]
+    for index, branch in enumerate(branches):
+        if index >= BRANCH_DETAIL_LIMIT:
+            break
+        raw_branch = branches_raw[index] if isinstance(branches_raw, list) else {}
+        sha = (raw_branch.get("commit") or {}).get("sha")
+        if not sha:
+            continue
+        try:
+            commit = _get(f"{base}/commits/{sha}")
+            branch["last_commit_date"] = (
+                commit.get("commit", {})
+                .get("committer", {})
+                .get("date")
+            )
+        except GitHubAPIError:
+            branch["last_commit_date"] = None
 
     snapshot = {
         "repo_url": repo_url.strip(),
@@ -180,6 +198,7 @@ def fetch_repo_snapshot(repo_url: str) -> dict[str, Any]:
             "issues_sampled": len(issues),
             "pull_requests_sampled": len(pull_requests),
             "branches_sampled": len(branches),
+            "branches_with_commit_dates": min(len(branches), BRANCH_DETAIL_LIMIT),
             "api_page_size": API_PAGE_SIZE,
             "report_sample_limit": REPORT_SAMPLE_LIMIT,
         },

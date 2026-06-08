@@ -78,22 +78,35 @@ Write ONLY the body (no main title). Use this exact structure:
 
 ## Branches
 
-### Main Branch
-State the default branch name and its role.
+### Real Numbers Summary
+State default branch, sampled branch count, protected branch count, and PR target counts.
 
-### Feature Branches
-List non-default branches that look like features (prefixes: feat, feature, dev, soda, mcp, etc.).
-Bullet each: **branch_name** — brief guess of purpose from name.
+### Branch Categories
+Group branches by meaning inferred from exact branch names:
+- Dependabot updates
+- Copilot suggestions
+- CI/CD work
+- Feature branches
+- Bug fixes
+- Documentation
+- Release branches
+- Other branches
 
-### Release Branches
-List release/* or version-like branches, or state "No explicit release branches identified."
+For each group, show count and 1-3 exact example branch names.
+
+### Most Interesting Non-Automated Branches
+List only the top 5 non-automated branches. For each branch, infer purpose from the branch name.
+Examples:
+- fix-memory-saving -> Bug fix targeting memory optimization
+- ci/split-e2e-ai-tests -> CI/CD pipeline work splitting the E2E test suite
+- feature/user-auth -> Feature work for user authentication
 
 ### Protected Branches
-List branches where protected=true, or state none are protected and recommend protecting main.
+List branches where protected=true, or state none are protected.
 
-End with 1-2 sentences of workflow recommendation.
 Rules:
 - Use exact branch names from JSON.
-- NEVER describe branch workflow unless the sampled branch data supports it.
+- NEVER write generic filler like "likely used for feature or topic development".
+- Dependabot and Copilot branches are automated; group them instead of describing every one.
 - If data is missing, say "Data unavailable".
 """

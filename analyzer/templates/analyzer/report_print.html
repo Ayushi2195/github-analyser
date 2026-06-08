@@ -20,11 +20,23 @@
         }
 
         .cover {
-            background: #5b21b6;
+            background: #4c1d95;
             color: #ffffff;
-            padding: 24px 28px 20px;
-            margin-bottom: 18px;
+            padding: 18px 24px;
+            margin-bottom: 10px;
+            border-radius: 8px;
+            display: table;
+            width: 100%;
         }
+
+        .cover-copy,
+        .score-card {
+            display: table-cell;
+            vertical-align: middle;
+        }
+
+        .cover-copy { width: 68%; }
+        .score-card { width: 32%; text-align: right; }
 
         .brand {
             font-size: 10px;
@@ -33,22 +45,66 @@
             margin-bottom: 6px;
         }
 
+        .cover-kicker {
+            font-size: 11px;
+            color: #ddd6fe;
+            margin-bottom: 4px;
+            font-weight: bold;
+        }
+
         .cover h1 {
-            font-size: 22px;
+            font-size: 25px;
             font-weight: bold;
             margin-bottom: 4px;
             color: #ffffff;
+            word-break: break-word;
         }
 
         .cover-sub {
-            font-size: 11px;
+            font-size: 10px;
+            color: #c4b5fd;
+        }
+
+        .score-ring-wrap {
+            display: inline-block;
+            position: relative;
+            width: 92px;
+            height: 92px;
+            text-align: center;
+        }
+
+        .score-ring-wrap svg {
+            width: 92px;
+            height: 92px;
+            transform: rotate(-90deg);
+        }
+
+        .score-ring-text {
+            position: absolute;
+            inset: 0;
+            padding-top: 25px;
+            text-align: center;
+            color: #ffffff;
+        }
+
+        .score-ring-number {
+            font-size: 22px;
+            font-weight: bold;
+            line-height: 1;
+        }
+
+        .score-ring-label {
+            font-size: 8px;
+            margin-top: 3px;
             color: #e9d5ff;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
         }
 
         .meta-table {
             width: 100%;
             border-collapse: collapse;
-            margin-bottom: 18px;
+            margin-bottom: 10px;
         }
 
         .meta-table td {
@@ -75,15 +131,148 @@
             word-break: break-all;
         }
 
-        .health-badge {
-            font-size: 18px;
-            font-weight: bold;
-            color: #5b21b6;
-        }
-
         .health-label {
             font-size: 10px;
             color: #64748b;
+        }
+
+        .health-bar {
+            width: 100%;
+            height: 7px;
+            border-radius: 999px;
+            background: #e2e8f0;
+            overflow: hidden;
+            margin: 6px 0 4px;
+        }
+
+        .health-bar-fill {
+            height: 7px;
+            border-radius: 999px;
+            background: {{ health_color }};
+        }
+
+        .summary-grid {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0 8px;
+            margin: 2px 0 10px;
+        }
+
+        .summary-grid td {
+            width: 25%;
+            padding: 8px 10px;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            vertical-align: top;
+        }
+
+        .summary-value {
+            font-size: 17px;
+            font-weight: bold;
+            color: #1e293b;
+        }
+
+        .summary-text {
+            font-size: 9px;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-top: 2px;
+        }
+
+        .insight-section {
+            margin: 12px 0 16px;
+        }
+
+        .insight-title {
+            font-size: 13px;
+            color: #1e293b;
+            font-weight: bold;
+            margin-bottom: 8px;
+            padding-bottom: 5px;
+            border-bottom: 2px solid #ede9fe;
+        }
+
+        .issue-group {
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            padding: 8px 10px;
+            margin-bottom: 8px;
+        }
+
+        .section-note {
+            color: #64748b;
+            font-size: 10px;
+            margin: -2px 0 8px;
+        }
+
+        .badge {
+            display: inline-block;
+            background: #eef2ff;
+            color: #4338ca;
+            border: 1px solid #c7d2fe;
+            border-radius: 999px;
+            padding: 2px 8px;
+            font-size: 9px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .issue-mini-list {
+            margin-left: 14px;
+        }
+
+        .branch-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 10px;
+            page-break-inside: auto;
+        }
+
+        .branch-table th {
+            text-align: left;
+            background: #f1f5f9;
+            color: #334155;
+            padding: 7px 8px;
+            border: 1px solid #e2e8f0;
+        }
+
+        .branch-table td {
+            padding: 7px 8px;
+            border: 1px solid #e2e8f0;
+        }
+
+        .branch-group-grid {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 6px;
+            margin-bottom: 8px;
+        }
+
+        .branch-group-grid td {
+            width: 33.33%;
+            padding: 8px;
+            border: 1px solid #e2e8f0;
+            background: #f8fafc;
+            vertical-align: top;
+        }
+
+        .branch-group-title {
+            font-weight: bold;
+            color: #1e293b;
+            font-size: 10px;
+        }
+
+        .branch-group-count {
+            color: #4f46e5;
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        .branch-group-examples {
+            color: #64748b;
+            font-size: 9px;
+            margin-top: 2px;
         }
 
         .report-body {
@@ -193,9 +382,24 @@
 </head>
 <body>
     <div class="cover">
-        <div class="brand">REPOFLOW</div>
-        <h1>GitHub Repository Analysis Report</h1>
-        <p class="cover-sub">Generated {{ generated_at }}</p>
+        <div class="cover-copy">
+            <div class="brand">REPOFLOW</div>
+            <div class="cover-kicker">GitHub Repository Analysis Report</div>
+            <h1>{{ repo_display }}</h1>
+            <p class="cover-sub">Generated {{ generated_at }}</p>
+        </div>
+        <div class="score-card">
+            <div class="score-ring-wrap">
+                <svg viewBox="0 0 92 92" aria-hidden="true">
+                    <circle cx="46" cy="46" r="40" fill="none" stroke="#7c3aed" stroke-width="9"></circle>
+                    <circle cx="46" cy="46" r="40" fill="none" stroke="{{ health_color }}" stroke-width="9" stroke-linecap="round" stroke-dasharray="{{ score_dash }} {{ score_gap }}"></circle>
+                </svg>
+                <div class="score-ring-text">
+                    <div class="score-ring-number">{{ health_score }}</div>
+                    <div class="score-ring-label">{{ health_label }}</div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <table class="meta-table">
@@ -206,7 +410,8 @@
             </td>
             <td>
                 <div class="meta-label">Health Score</div>
-                <div class="health-badge">{{ health_score }}/100</div>
+                <div class="meta-value" style="color: {{ health_color }}; font-size: 18px;">{{ health_score }}/100</div>
+                <div class="health-bar"><div class="health-bar-fill" style="width: {{ health_score }}%;"></div></div>
                 <div class="health-label">{{ health_label }}</div>
             </td>
             <td>
@@ -215,6 +420,92 @@
             </td>
         </tr>
     </table>
+
+    <table class="summary-grid">
+        <tr>
+            <td>
+                <div class="summary-value">{{ pdf_summary.issues_total }}</div>
+                <div class="summary-text">Open issues</div>
+            </td>
+            <td>
+                <div class="summary-value">{{ pdf_summary.issues_sampled }}</div>
+                <div class="summary-text">Issues sampled</div>
+            </td>
+            <td>
+                <div class="summary-value">{{ pdf_summary.prs_total }}</div>
+                <div class="summary-text">Open PRs</div>
+            </td>
+            <td>
+                <div class="summary-value">{{ pdf_summary.branches_sampled }}</div>
+                <div class="summary-text">Branches sampled</div>
+            </td>
+        </tr>
+    </table>
+
+    <div class="insight-section">
+        <div class="insight-title">Issue Groups</div>
+        <p class="section-note">{{ pdf_summary.issue_groups_note }}</p>
+        {% if pdf_summary.issue_groups %}
+            {% for group in pdf_summary.issue_groups %}
+            <div class="issue-group">
+                <span class="badge" style="background: {{ group.style.bg }}; border-color: {{ group.style.border }}; color: {{ group.style.color }};">{{ group.label }} · {{ group.count }} sampled</span>
+                <div class="section-note">Showing {{ group.displayed_count }} of {{ group.count }} sampled issues in this label.</div>
+                <ul class="issue-mini-list">
+                    {% for issue in group.issues %}
+                    <li><strong>#{{ issue.number }}</strong> {{ issue.title }} <span style="color:#64748b;">by @{{ issue.author|default:"unknown" }}</span></li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endfor %}
+        {% else %}
+            <p>Issue label data unavailable for this report.</p>
+        {% endif %}
+    </div>
+
+    <div class="insight-section">
+        <div class="insight-title">Branch Snapshot</div>
+        {% if pdf_summary.branch_groups %}
+        <table class="branch-group-grid">
+            <tr>
+                {% for group in pdf_summary.branch_groups %}
+                <td>
+                    <div class="branch-group-count">{{ group.count }}</div>
+                    <div class="branch-group-title">{{ group.category }}</div>
+                    <div class="branch-group-examples">{{ group.examples|join:", " }}</div>
+                </td>
+                {% if forloop.counter|divisibleby:3 and not forloop.last %}
+            </tr>
+            <tr>
+                {% endif %}
+                {% endfor %}
+            </tr>
+        </table>
+        {% endif %}
+        {% if pdf_summary.branch_rows %}
+        <table class="branch-table">
+            <thead>
+                <tr>
+                    <th>Branch</th>
+                    <th>Last commit</th>
+                    <th>Open PRs targeting</th>
+                    <th>Protected</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for branch in pdf_summary.branch_rows %}
+                <tr>
+                    <td><strong>{{ branch.name }}</strong></td>
+                    <td>{{ branch.last_commit_date }}</td>
+                    <td>{{ branch.open_prs }}</td>
+                    <td>{{ branch.protected }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+            <p>Branch detail data unavailable for this report.</p>
+        {% endif %}
+    </div>
 
     <div class="report-body">
         <div class="report-prose">
