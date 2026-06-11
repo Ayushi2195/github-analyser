@@ -101,6 +101,14 @@ def _gallery_items() -> list[dict]:
     return [_gallery_item(analysis) for analysis in analyses]
 
 
+def _safe_gallery_items() -> list[dict]:
+    try:
+        return _gallery_items()
+    except Exception as exc:
+        print(f"Gallery unavailable: {exc}", flush=True)
+        return []
+
+
 def _cached_real_analysis_count() -> int:
     try:
         connect_mongo()
@@ -175,9 +183,17 @@ def _sample_preview() -> dict:
     return preview
 
 
+def _safe_sample_preview() -> dict:
+    try:
+        return _sample_preview()
+    except Exception as exc:
+        print(f"Sample preview unavailable: {exc}", flush=True)
+        return _fallback_preview()
+
+
 def _homepage_context(extra: dict | None = None) -> dict:
     total_real = _cached_real_analysis_count()
-    gallery = _gallery_items()
+    gallery = _safe_gallery_items()
     avg_score = round(mean(item["health_score"] for item in gallery)) if gallery else 0
     context = {
         "gallery_items": gallery,
@@ -187,7 +203,7 @@ def _homepage_context(extra: dict | None = None) -> dict:
         "healthy_count": sum(1 for item in gallery if item["health_score"] >= 80),
         "language_count": len({item["primary_language"] for item in gallery if item["primary_language"]}),
         "sample_tags": ["Structure", "Health score", "Issues", "Branches"],
-        "sample_preview": _sample_preview(),
+        "sample_preview": _safe_sample_preview(),
     }
     if extra:
         context.update(extra)
@@ -349,10 +365,7 @@ def _render_markdown_report(repo_url: str) -> tuple[str, str]:
                 extensions=["tables", "fenced_code", "nl2br"],
             )
             if not _stored_pdf_path(normalized_url):
-                try:
-                    _write_pdf_file(normalized_url, html_report, md_report)
-                except Exception:
-                    pass
+                _try_write_pdf_file(normalized_url, html_report, md_report)
             return md_report, html_report
     except (PyMongoError, OSError):
         pass
@@ -380,10 +393,7 @@ def _render_markdown_report(repo_url: str) -> tuple[str, str]:
         )
     except (PyMongoError, OSError):
         pass
-    try:
-        _write_pdf_file(normalized_url, html_report, md_report)
-    except Exception:
-        pass
+    _try_write_pdf_file(normalized_url, html_report, md_report)
     print("Analysis completed.", flush=True)
     return md_report, html_report
 
@@ -483,6 +493,18 @@ def _write_pdf_file(repo_url: str, html_report: str, md_report: str) -> Path:
     except (GitHubAPIError, PyMongoError, OSError):
         pass
     return path
+
+
+def _try_write_pdf_file(repo_url: str, html_report: str, md_report: str) -> Path | None:
+    try:
+        return _write_pdf_file(repo_url, html_report, md_report)
+    except Exception as exc:
+        print(f"PDF generation skipped: {exc}", flush=True)
+        try:
+            update_pdf_path(repo_url, "")
+        except (GitHubAPIError, PyMongoError, OSError):
+            pass
+        return None
 
 
 def _stored_pdf_path(repo_url: str) -> Path | None:
