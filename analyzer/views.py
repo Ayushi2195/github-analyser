@@ -42,7 +42,29 @@ def _format_count(value: int) -> str:
     return str(value)
 
 
+def _gallery_health_style(score: int) -> dict[str, str]:
+    if score >= 80:
+        return {
+            "state": "healthy",
+            "text_class": "text-emerald-600",
+            "bar_class": "bg-emerald-500",
+        }
+    if score >= 65:
+        return {
+            "state": "attention",
+            "text_class": "text-amber-600",
+            "bar_class": "bg-amber-500",
+        }
+    return {
+        "state": "attention",
+        "text_class": "text-rose-600",
+        "bar_class": "bg-rose-500",
+    }
+
+
 def _gallery_item(analysis: RepoAnalysisCache) -> dict:
+    health_score = analysis.health_score or 0
+    health_style = _gallery_health_style(health_score)
     return {
         "full_name": f"{analysis.owner}/{analysis.repo_name}",
         "owner": analysis.owner,
@@ -54,8 +76,11 @@ def _gallery_item(analysis: RepoAnalysisCache) -> dict:
             kwargs={"owner": analysis.owner, "repo_name": analysis.repo_name},
         ),
         "is_featured": bool(getattr(analysis, "is_featured", False)),
-        "health_score": analysis.health_score or 0,
+        "health_score": health_score,
         "health_label": analysis.health_label or "Unknown",
+        "health_state": health_style["state"],
+        "health_text_class": health_style["text_class"],
+        "health_bar_class": health_style["bar_class"],
         "primary_language": analysis.primary_language or "Unknown",
         "tech_stack": analysis.tech_stack or [analysis.primary_language or "Repo"],
         "stars": _format_count(analysis.stars or 0),
@@ -76,25 +101,93 @@ def _gallery_items() -> list[dict]:
     return [_gallery_item(analysis) for analysis in analyses]
 
 
-def _cached_analysis_count() -> int:
+def _cached_real_analysis_count() -> int:
     try:
         connect_mongo()
-        return RepoAnalysisCache.objects.count()
+        return RepoAnalysisCache.objects(is_featured=False).count()
     except (PyMongoError, OSError):
         return 0
 
 
+def _fallback_preview() -> dict:
+    return {
+        "repo_display": "tiangolo/fastapi",
+        "health_score": 80,
+        "health_label": "Healthy",
+        "health_class": "emerald",
+        "has_preview_data": False,
+        "issues_total": 0,
+        "prs_total": 0,
+        "branches_sampled": 0,
+        "issue_titles": [
+            "Analyze tiangolo/fastapi to show exact GitHub issue titles here",
+            "Saved FastAPI data will include issue numbers and titles",
+            "The preview updates from MongoDB once the report exists",
+        ],
+    }
+
+
+def _score_tone(score: int) -> str:
+    if score >= 80:
+        return "emerald"
+    if score >= 65:
+        return "amber"
+    return "rose"
+
+
+def _sample_preview() -> dict:
+    preview = _fallback_preview()
+    try:
+        cached = get_cached_analysis("https://github.com/tiangolo/fastapi")
+    except (GitHubAPIError, PyMongoError, OSError):
+        return preview
+    if not cached:
+        return preview
+
+    summary = (cached.report_sections or {}).get("pdf_summary") or {}
+    issue_titles = []
+    for group in summary.get("issue_groups", []):
+        for issue in group.get("issues", []):
+            title = issue.get("title")
+            number = issue.get("number")
+            if title:
+                prefix = f"#{number} " if number else ""
+                issue_titles.append(f"{prefix}{title}")
+            if len(issue_titles) >= 3:
+                break
+        if len(issue_titles) >= 3:
+            break
+
+    score = cached.health_score or preview["health_score"]
+    preview.update(
+        {
+            "repo_display": f"{cached.owner}/{cached.repo_name}",
+            "health_score": score,
+            "health_label": cached.health_label or preview["health_label"],
+            "health_class": _score_tone(score),
+            "has_preview_data": True,
+            "issues_total": summary.get("issues_total", cached.open_issues_count or 0),
+            "prs_total": summary.get("prs_total", cached.open_prs_count or 0),
+            "branches_sampled": summary.get("branches_sampled", cached_branch_count(cached)),
+            "issue_titles": issue_titles or preview["issue_titles"],
+        }
+    )
+    return preview
+
+
 def _homepage_context(extra: dict | None = None) -> dict:
-    total_real = _cached_analysis_count()
+    total_real = _cached_real_analysis_count()
     gallery = _gallery_items()
     avg_score = round(mean(item["health_score"] for item in gallery)) if gallery else 0
     context = {
         "gallery_items": gallery,
+        "real_analysis_count": total_real,
         "repos_analyzed": f"{total_real:,}",
         "avg_health_score": avg_score,
         "healthy_count": sum(1 for item in gallery if item["health_score"] >= 80),
         "language_count": len({item["primary_language"] for item in gallery if item["primary_language"]}),
         "sample_tags": ["Structure", "Health score", "Issues", "Branches"],
+        "sample_preview": _sample_preview(),
     }
     if extra:
         context.update(extra)
@@ -357,11 +450,14 @@ def _build_pdf_html(repo_url: str, html_report: str, md_report: str) -> str:
 
 def _pdf_filename(repo_url: str) -> str:
     try:
-        _, repo = parse_repo_url(repo_url)
-        safe = re.sub(r"[^\w\-]", "", repo)[:40]
-        return f"repoflow-{safe}-report.pdf"
+        owner, repo = parse_repo_url(repo_url)
+        safe_owner = re.sub(r"[^\w\-]", "", owner)[:40]
+        safe_repo = re.sub(r"[^\w\-]", "", repo)[:40]
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        return f"repoflow-{safe_owner}-{safe_repo}-{stamp}.pdf"
     except GitHubAPIError:
-        return "repoflow-report.pdf"
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        return f"repoflow-report-{stamp}.pdf"
 
 
 def _pdf_cache_path(repo_url: str) -> Path:
@@ -401,12 +497,17 @@ def _stored_pdf_path(repo_url: str) -> Path | None:
 
 
 def _pdf_file_response(path: Path, repo_url: str) -> FileResponse:
-    return FileResponse(
+    response = FileResponse(
         path.open("rb"),
         content_type="application/pdf",
         as_attachment=True,
         filename=_pdf_filename(repo_url),
     )
+    response["Content-Length"] = str(path.stat().st_size)
+    response["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response["Pragma"] = "no-cache"
+    response["X-Content-Type-Options"] = "nosniff"
+    return response
 
 
 def analyze(request):

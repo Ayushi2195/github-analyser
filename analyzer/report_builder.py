@@ -138,19 +138,23 @@ def _branch_category(name: str) -> tuple[str, str]:
             issue_hint = f" for issue #{match.group(1)}"
         return "Copilot suggestions", f"GitHub Copilot suggested code change{issue_hint}."
     if lower.startswith(("ci/", "ci-", "test/", "tests/", "e2e/", "build/", "workflow/", "github-actions/")) or "ci" in lower or "e2e" in lower:
-        return "CI/CD work", f"CI/CD or test automation work: {_clean_branch_token(name)}."
-    if lower.startswith(("fix/", "fix-", "bug/", "bugfix/", "bugfix-", "hotfix/", "hotfix-")) or "fix" in lower:
-        topic = re.sub(r"^(bugfix|hotfix|fix|bug)[/-]?", "", name, flags=re.IGNORECASE)
+        return "CI/CD work", f"CI/CD work: {_clean_branch_token(name)}."
+    if lower.startswith(("fix/", "fix-", "fix_", "bug/", "bug-", "bug_", "bugfix/", "bugfix-", "bugfix_", "hotfix/", "hotfix-", "hotfix_")) or "fix" in lower:
+        topic = re.sub(r"^(bugfix|hotfix|fix|bug)[/_-]?", "", name, flags=re.IGNORECASE)
         return "Bug fixes", f"Bug fix targeting {_clean_branch_token(topic) or 'a reported defect'}."
-    if lower.startswith(("feature/", "feature-", "feat/", "feat-")):
-        topic = re.sub(r"^(feature|feat)[/-]?", "", name, flags=re.IGNORECASE)
-        return "Feature branches", f"Feature work for {_clean_branch_token(topic) or 'a new capability'}."
-    if lower.startswith(("release/", "release-", "rel/", "v")):
+    if lower.startswith(("feature/", "feature-", "feature_", "feat/", "feat-", "feat_")):
+        topic = re.sub(r"^(feature|feat)[/_-]?", "", name, flags=re.IGNORECASE)
+        return "Feature branches", f"Feature work: {_clean_branch_token(topic) or 'new capability'} improvements, not yet merged."
+    if lower in {"mcp", "model-context-protocol"} or lower.startswith(("mcp/", "mcp-")):
+        return "Feature branches", "Likely MCP (Model Context Protocol) integration work in progress."
+    if "query-set" in lower or "query_sets" in lower or "querysets" in lower:
+        return "Feature branches", "Feature branch for query set functionality."
+    if lower.startswith(("release/", "release-", "release_", "rel/", "rel-", "rel_", "v")):
         return "Release branches", f"Release or version preparation branch: {_clean_branch_token(name)}."
-    if lower.startswith(("docs/", "docs-", "doc/", "doc-")):
-        topic = re.sub(r"^(docs|doc)[/-]?", "", name, flags=re.IGNORECASE)
+    if lower.startswith(("docs/", "docs-", "docs_", "doc/", "doc-", "doc_")):
+        topic = re.sub(r"^(docs|doc)[/_-]?", "", name, flags=re.IGNORECASE)
         return "Documentation", f"Documentation update for {_clean_branch_token(topic) or 'project docs'}."
-    return "Other branches", f"Branch name indicates {_clean_branch_token(name)}."
+    return "Other branches", f"Work in progress around {_clean_branch_token(name)}."
 
 
 def _branch_interest_score(name: str, category: str) -> int:
@@ -354,8 +358,14 @@ def build_branches_section(snapshot: dict[str, Any]) -> str:
     if interesting:
         for item in interesting:
             open_prs = pr_targets.get(item["name"], 0)
-            pr_text = f"{open_prs} open PR(s) target this branch" if open_prs else "No sampled open PRs target this branch"
-            lines.append(f"- **{item['name']}** — {item['description']} {pr_text}.")
+            status = (
+                f"(active - {open_prs} open PR targeting it)"
+                if open_prs == 1
+                else f"(active - {open_prs} open PRs targeting it)"
+                if open_prs
+                else "(stale - no active PR)"
+            )
+            lines.append(f"- **{item['name']}** — {item['description']} {status}")
     else:
         lines.append("No non-automated branch names with enough signal were found in the sampled branch list.")
     lines.append("")

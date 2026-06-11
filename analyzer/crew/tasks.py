@@ -82,6 +82,12 @@ def branches_task(repo_url: str, snapshot: dict) -> Task:
             f"You have been given EXACTLY these sampled branches from the GitHub API:\n{branches_str}\n\n"
             f"{BRANCHES_FORMAT}\n\n"
             "Classify every sampled branch. Use exact branch names from the data. "
+            "For each interesting branch, write a one-line interpretation instead of saying "
+            "'Branch name indicates X'. Examples: feat_config_files means "
+            "'Feature work: configuration file improvements, not yet merged'; mcp means "
+            "'Likely MCP (Model Context Protocol) integration work in progress'; query-sets means "
+            "'Feature branch for query set functionality'. If a branch has 0 open PRs targeting it, "
+            "add '(stale - no active PR)'. If it has PRs, add '(active - N open PRs targeting it)'. "
             "NEVER make general statements. If data is missing, say 'Data unavailable'."
         ),
         expected_output="Detailed Markdown branch analysis with all sections.",

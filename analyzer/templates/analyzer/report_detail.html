@@ -15,11 +15,11 @@
             <p class="mt-2 text-sm font-medium text-slate-500">Analyzed at {{ analyzed_at }}</p>
         </div>
         <div class="flex flex-wrap gap-3">
-            <a href="{{ repo_url }}" class="inline-flex items-center justify-center rounded-full border border-violet-100 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 shadow-sm hover:border-brand-200 hover:text-brand-600 transition-colors">
-                GitHub repo
-            </a>
             <a href="{% url 'download_pdf' %}?repo_url={{ repo_url|urlencode }}" class="inline-flex items-center justify-center rounded-full bg-slate-900 px-5 py-2.5 text-sm font-bold text-white shadow-lg hover:bg-slate-800 transition-colors">
                 Download PDF
+            </a>
+            <a href="/#analyze" class="inline-flex items-center justify-center rounded-full border border-violet-100 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 shadow-sm hover:border-brand-200 hover:text-brand-600 transition-colors">
+                Analyze another
             </a>
         </div>
     </div>
