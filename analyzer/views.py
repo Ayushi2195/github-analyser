@@ -113,7 +113,8 @@ def _cached_real_analysis_count() -> int:
     try:
         connect_mongo()
         return RepoAnalysisCache.objects(is_featured=False).count()
-    except (PyMongoError, OSError):
+    except Exception as exc:
+        print(f"Analysis count unavailable: {exc}", flush=True)
         return 0
 
 
@@ -210,8 +211,28 @@ def _homepage_context(extra: dict | None = None) -> dict:
     return context
 
 
+def _safe_homepage_context(extra: dict | None = None) -> dict:
+    try:
+        return _homepage_context(extra)
+    except Exception as exc:
+        print(f"Homepage context fallback used: {exc}", flush=True)
+        context = {
+            "gallery_items": [],
+            "real_analysis_count": 0,
+            "repos_analyzed": "0",
+            "avg_health_score": 0,
+            "healthy_count": 0,
+            "language_count": 0,
+            "sample_tags": ["Structure", "Health score", "Issues", "Branches"],
+            "sample_preview": _fallback_preview(),
+        }
+        if extra:
+            context.update(extra)
+        return context
+
+
 def index(request):
-    return render(request, "analyzer/index.html", _homepage_context())
+    return render(request, "analyzer/index.html", _safe_homepage_context())
 
 
 def _health_color(score: int) -> str:
@@ -367,8 +388,8 @@ def _render_markdown_report(repo_url: str) -> tuple[str, str]:
             if not _stored_pdf_path(normalized_url):
                 _try_write_pdf_file(normalized_url, html_report, md_report)
             return md_report, html_report
-    except (PyMongoError, OSError):
-        pass
+    except Exception as exc:
+        print(f"Cache lookup skipped: {exc}", flush=True)
 
     result = run_analysis_result(normalized_url)
     md_report = result["markdown"]
@@ -391,8 +412,9 @@ def _render_markdown_report(repo_url: str) -> tuple[str, str]:
             result["health"],
             report_sections,
         )
-    except (PyMongoError, OSError):
-        pass
+        print("Report saved to MongoDB.", flush=True)
+    except Exception as exc:
+        print(f"MongoDB save skipped: {exc}", flush=True)
     _try_write_pdf_file(normalized_url, html_report, md_report)
     print("Analysis completed.", flush=True)
     return md_report, html_report
@@ -424,18 +446,12 @@ def _repo_display_name(repo_url: str, md_report: str) -> str:
 
 
 def _cache_report(request, repo_url: str, html_report: str, md_report: str) -> None:
-    request.session[SESSION_REPORT_KEY] = {
-        "repo_url": repo_url,
-        "html_report": html_report,
-        "md_report": md_report,
-    }
-    request.session.modified = True
+    # Do not store full reports in Django sessions on Railway. Session writes can
+    # turn a successful analysis into a 500 if the session DB is unavailable.
+    return None
 
 
 def _get_cached_report(request, repo_url: str) -> tuple[str, str] | None:
-    cached = request.session.get(SESSION_REPORT_KEY)
-    if cached and cached.get("repo_url") == repo_url:
-        return cached.get("md_report", ""), cached.get("html_report", "")
     return None
 
 
@@ -536,14 +552,14 @@ def _pdf_file_response(path: Path, repo_url: str) -> FileResponse:
 
 def analyze(request):
     if request.method != "POST":
-        return render(request, "analyzer/index.html", _homepage_context())
+        return render(request, "analyzer/index.html", _safe_homepage_context())
 
     repo_url = request.POST.get("repo_url", "").strip()
     if not repo_url:
         return render(
             request,
             "analyzer/index.html",
-            _homepage_context({"error": "Please enter a GitHub repository URL.", "repo_url": repo_url}),
+            _safe_homepage_context({"error": "Please enter a GitHub repository URL.", "repo_url": repo_url}),
         )
 
     try:
@@ -552,19 +568,19 @@ def analyze(request):
         return render(
             request,
             "analyzer/index.html",
-            _homepage_context({"report": html_report, "repo_url": repo_url}),
+            _safe_homepage_context({"report": html_report, "repo_url": repo_url}),
         )
     except GitHubAPIError as exc:
         return render(
             request,
             "analyzer/index.html",
-            _homepage_context({"error": str(exc), "repo_url": repo_url}),
+            _safe_homepage_context({"error": str(exc), "repo_url": repo_url}),
         )
     except Exception as exc:
         return render(
             request,
             "analyzer/index.html",
-            _homepage_context({
+            _safe_homepage_context({
                 "error": f"Analysis failed: {exc}",
                 "repo_url": repo_url,
             }),
@@ -582,7 +598,7 @@ def cached_report(request, owner: str, repo_name: str):
         return render(
             request,
             "analyzer/index.html",
-            _homepage_context({
+            _safe_homepage_context({
                 "error": "That saved report was not found. Analyze the repository to create it.",
                 "repo_url": repo_url,
             }),
@@ -632,13 +648,13 @@ def download_pdf(request):
             return render(
                 request,
                 "analyzer/index.html",
-                _homepage_context({"error": str(exc), "repo_url": repo_url}),
+                _safe_homepage_context({"error": str(exc), "repo_url": repo_url}),
             )
         except Exception as exc:
             return render(
                 request,
                 "analyzer/index.html",
-                _homepage_context({
+                _safe_homepage_context({
                     "error": f"PDF export failed: {exc}",
                     "repo_url": repo_url,
                 }),
@@ -653,7 +669,7 @@ def download_pdf(request):
         return render(
             request,
             "analyzer/index.html",
-            _homepage_context({
+            _safe_homepage_context({
                 "error": f"PDF export failed: {exc}.{hint}",
                 "repo_url": repo_url,
                 "report": html_report,
