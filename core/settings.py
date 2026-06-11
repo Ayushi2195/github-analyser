@@ -16,6 +16,10 @@ import importlib.util
 import os
 from pathlib import Path
 
+os.environ.setdefault("CREWAI_DISABLE_CACHE", "true")
+os.environ.setdefault("LITELLM_DISABLE_CACHE", "true")
+os.environ.setdefault("LITELLM_CACHE", "false")
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -34,7 +38,7 @@ DEBUG = os.environ.get("DEBUG", "True").lower() in {"1", "true", "yes", "on"}
 
 ALLOWED_HOSTS = [
     host.strip()
-    for host in os.environ.get("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
+    for host in os.environ.get("ALLOWED_HOSTS", "localhost,127.0.0.1,.railway.app").split(",")
     if host.strip()
 ]
 
@@ -129,14 +133,17 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
-STATIC_URL = 'static/'
+STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 if importlib.util.find_spec("whitenoise"):
-    STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
-
-STATICFILES_DIRS = [
-    BASE_DIR / 'analyzer' / 'static',
-]
+    STORAGES = {
+        "default": {
+            "BACKEND": "django.core.files.storage.FileSystemStorage",
+        },
+        "staticfiles": {
+            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+        },
+    }
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field

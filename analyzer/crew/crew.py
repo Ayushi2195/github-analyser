@@ -44,6 +44,7 @@ def run_analysis_result(repo_url: str) -> dict:
         agents=[structure.agent],
         tasks=[structure],
         process=Process.sequential,
+        cache=False,
         verbose=True,
     )
     crew.kickoff()

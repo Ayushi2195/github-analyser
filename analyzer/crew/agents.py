@@ -1,5 +1,9 @@
 import os
 
+os.environ.setdefault("CREWAI_DISABLE_CACHE", "true")
+os.environ.setdefault("LITELLM_DISABLE_CACHE", "true")
+os.environ.setdefault("LITELLM_CACHE", "false")
+
 from crewai import Agent, LLM
 
 from analyzer.tools import (
@@ -27,6 +31,7 @@ def structure_agent() -> Agent:
         ),
         tools=[get_repo_structure],
         llm=_llm(),
+        cache=False,
         verbose=True,
     )
 
@@ -41,6 +46,7 @@ def issue_agent() -> Agent:
         ),
         tools=[get_repo_issues],
         llm=_llm(),
+        cache=False,
         verbose=True,
     )
 
@@ -55,6 +61,7 @@ def pull_request_agent() -> Agent:
         ),
         tools=[get_repo_pull_requests],
         llm=_llm(),
+        cache=False,
         verbose=True,
     )
 
@@ -69,5 +76,6 @@ def branch_agent() -> Agent:
         ),
         tools=[get_repo_branches],
         llm=_llm(),
+        cache=False,
         verbose=True,
     )
