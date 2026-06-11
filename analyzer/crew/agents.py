@@ -32,7 +32,7 @@ def structure_agent() -> Agent:
         tools=[get_repo_structure],
         llm=_llm(),
         cache=False,
-        verbose=True,
+        verbose=False,
     )
 
 
@@ -47,7 +47,7 @@ def issue_agent() -> Agent:
         tools=[get_repo_issues],
         llm=_llm(),
         cache=False,
-        verbose=True,
+        verbose=False,
     )
 
 
@@ -62,7 +62,7 @@ def pull_request_agent() -> Agent:
         tools=[get_repo_pull_requests],
         llm=_llm(),
         cache=False,
-        verbose=True,
+        verbose=False,
     )
 
 
@@ -77,5 +77,5 @@ def branch_agent() -> Agent:
         tools=[get_repo_branches],
         llm=_llm(),
         cache=False,
-        verbose=True,
+        verbose=False,
     )

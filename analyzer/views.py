@@ -371,6 +371,7 @@ def _render_markdown_report(repo_url: str) -> tuple[str, str]:
         "cache_version": CACHE_REPORT_VERSION,
     }
     try:
+        print("Saving report to MongoDB...", flush=True)
         save_analysis_cache(
             normalized_url,
             result["snapshot"],
@@ -383,6 +384,7 @@ def _render_markdown_report(repo_url: str) -> tuple[str, str]:
         _write_pdf_file(normalized_url, html_report, md_report)
     except Exception:
         pass
+    print("Analysis completed.", flush=True)
     return md_report, html_report
 
 

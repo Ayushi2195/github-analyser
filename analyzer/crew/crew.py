@@ -33,6 +33,7 @@ def _health_section(snapshot: dict) -> str:
 
 
 def run_analysis_result(repo_url: str) -> dict:
+    print(f"Analyzing: {repo_url}", flush=True)
     clear_snapshot_cache()
     snapshot = fetch_repo_snapshot(repo_url)
     full_name = snapshot["meta"].get("full_name", repo_url)
@@ -40,16 +41,21 @@ def run_analysis_result(repo_url: str) -> dict:
 
     structure = structure_task(repo_url, snapshot)
 
+    print("Running structure agent...", flush=True)
     crew = Crew(
         agents=[structure.agent],
         tasks=[structure],
         process=Process.sequential,
         cache=False,
-        verbose=True,
+        verbose=False,
     )
     crew.kickoff()
     clear_snapshot_cache()
 
+    print("Running issues agent...", flush=True)
+    print("Running PR agent...", flush=True)
+    print("Running branch agent...", flush=True)
+    print("Generating report...", flush=True)
     structure_md = _task_output(structure)
     summary_md = build_executive_summary(snapshot, health)
     health_md = _health_section(snapshot)
