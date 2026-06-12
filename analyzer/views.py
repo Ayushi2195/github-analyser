@@ -414,7 +414,7 @@ def _render_markdown_report(repo_url: str) -> tuple[str, str]:
         )
         print("Report saved to MongoDB.", flush=True)
     except Exception as exc:
-        print(f"MongoDB save skipped: {exc}", flush=True)
+        print(f"MongoDB save skipped: {type(exc).__name__}: {exc}", flush=True)
     _try_write_pdf_file(normalized_url, html_report, md_report)
     print("Analysis completed.", flush=True)
     return md_report, html_report

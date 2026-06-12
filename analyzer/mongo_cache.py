@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from datetime import timedelta
 from typing import Any
+from urllib.parse import urlparse
 
 from django.utils import timezone
 from mongoengine import (
@@ -14,11 +15,14 @@ from mongoengine import (
     ListField,
     StringField,
     connect,
+    disconnect,
 )
 from mongoengine.connection import get_connection
 from pymongo.errors import PyMongoError
 
 from analyzer.github_api import GitHubAPIError, parse_repo_url
+
+_CONNECTED_URI = None
 
 
 class RepoAnalysisCache(Document):
@@ -53,11 +57,47 @@ class RepoAnalysisCache(Document):
     }
 
 
+def _mongo_db_name(uri: str) -> str:
+    parsed = urlparse(uri)
+    if parsed.path and parsed.path != "/":
+        return parsed.path.strip("/")
+    return "github-analyser"
+
+
 def connect_mongo() -> None:
+    global _CONNECTED_URI
+    mongo_uri = os.environ.get("MONGO_URI", "mongodb://localhost:27017/github-analyser").strip()
+    if not mongo_uri:
+        raise RuntimeError("MONGO_URI is empty")
+    if mongo_uri.count("@") > 1:
+        print(
+            "MongoDB URI warning: credentials may contain an unescaped '@'. "
+            "URL-encode special characters in the password.",
+            flush=True,
+        )
+
     try:
-        get_connection()
+        connection = get_connection()
+        if _CONNECTED_URI == mongo_uri:
+            connection.admin.command("ping")
+            return
+        disconnect()
     except Exception:
-        connect(host=os.environ.get("MONGO_URI", "mongodb://localhost:27017/github-analyser"))
+        disconnect()
+
+    connect(
+        host=mongo_uri,
+        serverSelectionTimeoutMS=5000,
+        connectTimeoutMS=5000,
+        socketTimeoutMS=10000,
+    )
+    connection = get_connection()
+    connection.admin.command("ping")
+    _CONNECTED_URI = mongo_uri
+    print(
+        f"MongoDB connected: database={_mongo_db_name(mongo_uri)} collection=analyzed-reports",
+        flush=True,
+    )
 
 
 def normalize_repo_url(repo_url: str) -> str:
@@ -96,7 +136,7 @@ def save_analysis_cache(
     open_prs_count = len(snapshot.get("pull_requests", []))
     analyzed_at = timezone.localtime(timezone.now()).replace(tzinfo=None)
 
-    return RepoAnalysisCache.objects(repo_url=normalized_url).modify(
+    saved = RepoAnalysisCache.objects(repo_url=normalized_url).modify(
         upsert=True,
         new=True,
         set__repo_url=normalized_url,
@@ -117,6 +157,8 @@ def save_analysis_cache(
         set__is_featured=False,
         set__show_in_gallery=True,
     )
+    print(f"MongoDB saved report: {owner}/{repo}", flush=True)
+    return saved
 
 
 def update_pdf_path(repo_url: str, pdf_path: str) -> None:
