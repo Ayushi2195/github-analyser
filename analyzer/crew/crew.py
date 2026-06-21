@@ -12,6 +12,7 @@ from analyzer.report_builder import (
     build_executive_summary,
     build_issues_section,
     build_pull_requests_section,
+    build_structure_section,
 )
 
 from .tasks import structure_task
@@ -56,7 +57,8 @@ def run_analysis_result(repo_url: str) -> dict:
     print("Running PR agent...", flush=True)
     print("Running branch agent...", flush=True)
     print("Generating report...", flush=True)
-    structure_md = _task_output(structure)
+    ai_overview = _task_output(structure)
+    structure_md = build_structure_section(snapshot, ai_overview)
     summary_md = build_executive_summary(snapshot, health)
     health_md = _health_section(snapshot)
     issues_md = build_issues_section(snapshot)

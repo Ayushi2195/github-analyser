@@ -32,8 +32,8 @@ from analyzer.report_builder import _branch_category
 from .crew.crew import run_analysis_result
 
 SESSION_REPORT_KEY = "repoflow_report"
-CACHE_REPORT_VERSION = 4
-PDF_CACHE_VERSION = 1
+CACHE_REPORT_VERSION = 5
+PDF_CACHE_VERSION = 2
 PDF_STORAGE_DIR = Path(settings.BASE_DIR) / "generated_reports"
 
 def _format_count(value: int) -> str:

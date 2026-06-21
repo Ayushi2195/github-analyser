@@ -4,6 +4,7 @@ All repository data fetching lives here so you can test and debug it independent
 """
 from __future__ import annotations
 
+import base64
 import os
 import re
 from typing import Any
@@ -16,6 +17,8 @@ GITHUB_TOKEN = os.environ.get("GITHUB_PERSONAL_ACCESS_TOKEN", "")
 API_PAGE_SIZE = 100
 REPORT_SAMPLE_LIMIT = 50
 BRANCH_DETAIL_LIMIT = 20
+FILE_EVIDENCE_LIMIT = 8
+DIRECTORY_EVIDENCE_LIMIT = 5
 HEADERS = {
     "Accept": "application/vnd.github+json",
     "X-GitHub-Api-Version": "2022-11-28",
@@ -82,6 +85,68 @@ def _search_total_count(query: str) -> int | None:
     return None
 
 
+def _content_preview(item: dict) -> str:
+    content = item.get("content")
+    if not content or item.get("encoding") != "base64":
+        return ""
+    try:
+        decoded = base64.b64decode(content).decode("utf-8", errors="replace")
+    except (ValueError, TypeError):
+        return ""
+    return decoded[:4000]
+
+
+def _enrich_root_items(base: str, contents: list[dict]) -> list[dict]:
+    files = [
+        {
+            "name": item.get("name", ""),
+            "path": item.get("path", item.get("name", "")),
+            "type": item.get("type", ""),
+            "size": item.get("size", 0),
+        }
+        for item in contents
+    ]
+
+    evidence_names = {
+        "readme.md", "pyproject.toml", "requirements.txt", "setup.py", "setup.cfg",
+        "package.json", "tsconfig.json", "go.mod", "cargo.toml", "gemfile",
+        "pom.xml", "build.gradle", "dockerfile", "compose.yml", "docker-compose.yml",
+        "agents.md", "contributing.md", "architecture.md", "concepts.md",
+    }
+    evidence_files = [
+        item for item in contents
+        if item.get("type") == "file" and item.get("name", "").lower() in evidence_names
+    ][:FILE_EVIDENCE_LIMIT]
+    previews: dict[str, str] = {}
+    for item in evidence_files:
+        try:
+            detail = _get(f"{base}/contents/{item['path']}")
+            previews[item["path"]] = _content_preview(detail) if isinstance(detail, dict) else ""
+        except GitHubAPIError:
+            previews[item.get("path", "")] = ""
+
+    useful_dirs = {
+        "src", "app", "lib", "tests", "test", "docs", "packages", "skills",
+        "api", "backend", "frontend", "core", ".github", ".agents",
+    }
+    directory_items = [
+        item for item in contents
+        if item.get("type") == "dir" and item.get("name", "").lower() in useful_dirs
+    ][:DIRECTORY_EVIDENCE_LIMIT]
+    children: dict[str, list[str]] = {}
+    for item in directory_items:
+        try:
+            listing = _get(f"{base}/contents/{item['path']}")
+            children[item["path"]] = [child.get("name", "") for child in listing[:12]] if isinstance(listing, list) else []
+        except GitHubAPIError:
+            children[item.get("path", "")] = []
+
+    for item in files:
+        item["content_preview"] = previews.get(item["path"], "")
+        item["children"] = children.get(item["path"], [])
+    return files
+
+
 _snapshot_cache: dict[str, dict[str, Any]] = {}
 
 
@@ -112,11 +177,7 @@ def fetch_repo_snapshot(repo_url: str) -> dict[str, Any]:
     open_issues_total = _search_total_count(f"repo:{owner}/{repo} is:issue is:open")
     open_prs_total = _search_total_count(f"repo:{owner}/{repo} is:pr is:open")
 
-    files = (
-        [{"name": item["name"], "type": item["type"]} for item in contents]
-        if isinstance(contents, list)
-        else []
-    )
+    files = _enrich_root_items(base, contents) if isinstance(contents, list) else []
     issue_base = f"https://github.com/{owner}/{repo}/issues"
     pr_base = f"https://github.com/{owner}/{repo}/pull"
     issues = [
@@ -126,8 +187,12 @@ def fetch_repo_snapshot(repo_url: str) -> dict[str, Any]:
             "labels": [label["name"] for label in issue.get("labels", [])],
             "author": issue.get("user", {}).get("login"),
             "created_at": issue.get("created_at"),
+            "updated_at": issue.get("updated_at"),
             "url": issue.get("html_url") or f"{issue_base}/{issue.get('number')}",
             "comments": issue.get("comments", 0),
+            "body": (issue.get("body") or "")[:2000],
+            "assignees": [assignee.get("login") for assignee in issue.get("assignees", [])],
+            "milestone": (issue.get("milestone") or {}).get("title"),
         }
         for issue in (issues_raw if isinstance(issues_raw, list) else [])
         if "pull_request" not in issue

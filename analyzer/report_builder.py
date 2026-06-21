@@ -3,7 +3,9 @@ Deterministic report sections — guaranteed detail for issues, PRs, and branche
 """
 from __future__ import annotations
 
+import json
 import re
+import tomllib
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from typing import Any
@@ -37,6 +39,208 @@ def _author_counts(items: list[dict]) -> Counter:
     return Counter(item.get("author") or "unknown" for item in items)
 
 
+TECH_EVIDENCE = {
+    "pyproject.toml": ("Python", "Python packaging, dependencies, and tool configuration"),
+    "requirements.txt": ("Python", "Python dependency list"),
+    "setup.py": ("Python", "Python package build configuration"),
+    "package.json": ("JavaScript/TypeScript", "Node.js scripts and dependencies"),
+    "tsconfig.json": ("TypeScript", "TypeScript compiler configuration"),
+    "go.mod": ("Go", "Go module and dependency definition"),
+    "cargo.toml": ("Rust", "Rust crate metadata and dependencies"),
+    "gemfile": ("Ruby", "Ruby dependencies"),
+    "pom.xml": ("Java", "Maven build and dependency configuration"),
+    "build.gradle": ("Java/Kotlin", "Gradle build configuration"),
+    "dockerfile": ("Docker", "Container build instructions"),
+    "docker-compose.yml": ("Docker Compose", "Local multi-service environment"),
+    "compose.yml": ("Docker Compose", "Local multi-service environment"),
+}
+
+CONFIG_PURPOSES = {
+    "gemini-extension.json": "Gemini extension metadata/configuration; it is not itself a programming language.",
+    "greptile.json": "Greptile repository analysis configuration; it is not part of the runtime tech stack.",
+    "uv.lock": "Exact locked Python dependency versions managed by uv.",
+    ".gitattributes": "Git behavior such as line endings and diff handling.",
+    ".gitignore": "Files intentionally excluded from version control.",
+}
+
+KNOWN_DEPENDENCIES = {
+    "django": "Django web framework",
+    "fastapi": "FastAPI web framework",
+    "flask": "Flask web framework",
+    "crewai": "CrewAI agent orchestration",
+    "langchain": "LangChain LLM tooling",
+    "pydantic": "Pydantic data validation",
+    "pytest": "pytest test framework",
+    "playwright": "Playwright browser automation",
+    "requests": "Requests HTTP client",
+    "react": "React UI library",
+    "next": "Next.js web framework",
+    "vue": "Vue UI framework",
+    "express": "Express server framework",
+    "typescript": "TypeScript language tooling",
+}
+
+
+def _file_map(snapshot: dict[str, Any]) -> dict[str, dict]:
+    return {item.get("name", "").lower(): item for item in snapshot.get("files", [])}
+
+
+def _detected_technologies(snapshot: dict[str, Any]) -> list[tuple[str, str]]:
+    files = _file_map(snapshot)
+    detected: list[tuple[str, str]] = []
+    primary = snapshot.get("meta", {}).get("language")
+    if primary:
+        detected.append((primary, "primary language reported by GitHub"))
+    for filename, (technology, reason) in TECH_EVIDENCE.items():
+        if filename in files and technology.lower() not in {item[0].lower() for item in detected}:
+            detected.append((technology, f"{reason}; evidence: `{files[filename].get('name')}`"))
+    dependencies: set[str] = set()
+    pyproject = files.get("pyproject.toml", {}).get("content_preview", "")
+    if pyproject:
+        try:
+            data = tomllib.loads(pyproject)
+            project = data.get("project", {})
+            for requirement in project.get("dependencies", []):
+                dependencies.add(re.split(r"[<>=!~\[; ]", requirement, maxsplit=1)[0].lower())
+            poetry = data.get("tool", {}).get("poetry", {}).get("dependencies", {})
+            dependencies.update(name.lower() for name in poetry if name.lower() != "python")
+        except (tomllib.TOMLDecodeError, TypeError):
+            pass
+    package_json = files.get("package.json", {}).get("content_preview", "")
+    if package_json:
+        try:
+            data = json.loads(package_json)
+            dependencies.update(name.lower() for name in data.get("dependencies", {}))
+            dependencies.update(name.lower() for name in data.get("devDependencies", {}))
+        except (json.JSONDecodeError, TypeError):
+            pass
+    requirements = files.get("requirements.txt", {}).get("content_preview", "")
+    for line in requirements.splitlines():
+        line = line.strip()
+        if line and not line.startswith("#"):
+            dependencies.add(re.split(r"[<>=!~\[; ]", line, maxsplit=1)[0].lower())
+    manifest_text = f"{pyproject}\n{package_json}\n{requirements}".lower()
+    for dependency, description in KNOWN_DEPENDENCIES.items():
+        if dependency in dependencies or re.search(rf"[\"']{re.escape(dependency)}(?:[\"'\s<>=!~\[]|$)", manifest_text):
+            if dependency.lower() not in {item[0].lower() for item in detected}:
+                detected.append((dependency, f"{description}; verified in a dependency manifest"))
+    return detected
+
+
+def _purpose_for_item(item: dict) -> str:
+    name = item.get("name", "")
+    lower = name.lower()
+    children = item.get("children") or []
+    child_hint = f" Visible entries include {', '.join(f'`{child}`' for child in children[:5])}." if children else ""
+    if lower == "readme.md":
+        return "Primary project introduction, setup instructions, and usage guide. Start here before reading code."
+    if lower in TECH_EVIDENCE:
+        return TECH_EVIDENCE[lower][1] + "."
+    if lower in CONFIG_PURPOSES:
+        return CONFIG_PURPOSES[lower]
+    if lower in {"src", "app", "lib", "core", "backend", "frontend", "api", "packages"}:
+        return f"Likely implementation code based on the conventional directory name.{child_hint}"
+    if lower in {"tests", "test"}:
+        return f"Automated tests; useful for learning expected behavior and safe examples of how components are called.{child_hint}"
+    if lower == "docs":
+        return f"Project documentation beyond the README; use it after the setup guide for deeper concepts.{child_hint}"
+    if lower == ".github":
+        return f"GitHub automation, issue templates, or contribution workflows.{child_hint}"
+    if lower in {"agents.md", "claude.md", "concepts.md", "architecture.md", "configuration.md", "contributing.md"}:
+        return "Human-readable project guidance; read this early because its filename signals architecture, setup, or contributor rules."
+    if lower in {"skills", ".agents", ".claude-plugin"}:
+        return f"Project-specific AI/skill integration area. Its exact contents, not the folder name alone, should determine behavior.{child_hint}"
+    if lower in {"fixtures", "examples", "samples"}:
+        return f"Example or test data that can show expected inputs and outputs.{child_hint}"
+    return "Supporting root item. RepoFlow has insufficient content evidence to claim a more specific purpose."
+
+
+def build_structure_section(snapshot: dict[str, Any], ai_overview: str = "") -> str:
+    meta = snapshot.get("meta", {})
+    files = snapshot.get("files", [])
+    file_names = {item.get("name", "").lower() for item in files}
+    technologies = _detected_technologies(snapshot)
+    overview = (
+        f"**{meta.get('full_name') or snapshot.get('repo')}** is described by its maintainers as: "
+        f"{meta.get('description') or 'No GitHub description was provided.'} "
+        f"The default branch is `{meta.get('default_branch') or 'unknown'}`."
+    )
+    clean_ai = ai_overview.strip()
+    if re.search(r"[\u3400-\u9fff]", clean_ai) or any(term in clean_ai.lower() for term in (" likely ", " probably ", " may be ")):
+        clean_ai = ""
+
+    lines = ["## Repository Structure Analysis", "", "### What This Project Is", "", overview]
+    if clean_ai:
+        lines.extend(["", clean_ai])
+
+    lines.extend(["", "### Verified Tech Stack", ""])
+    if technologies:
+        lines.extend(f"- **{technology}:** {reason}." for technology, reason in technologies)
+    else:
+        lines.append("- **Not confidently detected:** inspect dependency manifests before assuming a framework or language.")
+
+    config_items = [item for item in files if item.get("name", "").lower() in CONFIG_PURPOSES]
+    if config_items:
+        lines.extend(["", "### Configuration Files (Not Technologies)", ""])
+        for item in config_items:
+            lines.append(f"- **`{item['name']}`:** {_purpose_for_item(item)}")
+
+    priority_names = [
+        "readme.md", "contributing.md", "architecture.md", "concepts.md", "configuration.md",
+        "pyproject.toml", "package.json", "go.mod", "cargo.toml", "src", "app", "lib",
+        "core", "skills", "tests", "docs", ".github",
+    ]
+    selected = []
+    by_name = _file_map(snapshot)
+    for name in priority_names:
+        if name in by_name and by_name[name] not in selected:
+            selected.append(by_name[name])
+    selected = selected[:12]
+    lines.extend(["", "### Key Files and Folders: Why a Student Should Care", ""])
+    for item in selected:
+        lines.append(f"- **`{item['name']}` ({item.get('type', 'item')}):** {_purpose_for_item(item)}")
+    if not selected:
+        lines.append("- No high-confidence onboarding files were detected at the repository root.")
+
+    reading_order = []
+    for name in ("readme.md", "concepts.md", "architecture.md", "configuration.md", "contributing.md"):
+        if name in by_name:
+            reading_order.append(by_name[name]["name"])
+    implementation = next((by_name[name]["name"] for name in ("src", "app", "lib", "core", "skills") if name in by_name), None)
+    tests = next((by_name[name]["name"] for name in ("tests", "test") if name in by_name), None)
+    if implementation:
+        reading_order.append(implementation)
+    if tests:
+        reading_order.append(tests)
+    lines.extend(["", "### Suggested Reading Order", ""])
+    if reading_order:
+        for index, name in enumerate(reading_order[:6], start=1):
+            lines.append(f"{index}. **`{name}`** - {_purpose_for_item(by_name[name.lower()])}")
+    else:
+        lines.append("1. Start with the README, then locate the main source and test directories manually.")
+
+    lines.extend(["", "### Before You Contribute", ""])
+    if technologies:
+        lines.append("- Learn the basics of: " + ", ".join(technology for technology, _ in technologies[:5]) + ".")
+    if "tests" in file_names or "test" in file_names:
+        lines.append("- Read and run the test suite before changing implementation code.")
+    if "contributing.md" in file_names:
+        lines.append("- Follow `CONTRIBUTING.md` for setup, style, and pull-request rules.")
+    else:
+        lines.append("- No root `CONTRIBUTING.md` was detected; check `.github` or the README for contributor rules.")
+
+    lines.extend([
+        "", "### Repository Stats", "",
+        f"- **Stars:** {meta.get('stars') or 0}",
+        f"- **Forks:** {meta.get('forks') or 0}",
+        f"- **Default branch:** {meta.get('default_branch') or 'Data unavailable'}",
+        f"- **Primary language:** {meta.get('language') or 'Not specified'}",
+        f"- **License:** {meta.get('license') or 'Not specified'}",
+        f"- **Last updated:** {meta.get('updated_at') or 'Data unavailable'}",
+    ])
+    return "\n".join(lines)
+
+
 def _parse_github_date(value: str | None) -> datetime | None:
     if not value:
         return None
@@ -50,20 +254,80 @@ def _stale_issue_count(issues: list[dict], days: int = 90) -> int:
     now = datetime.now(timezone.utc)
     stale = 0
     for issue in issues:
-        created = _parse_github_date(issue.get("created_at"))
-        if created and (now - created).days >= days:
+        last_activity = _parse_github_date(issue.get("updated_at") or issue.get("created_at"))
+        if last_activity and (now - last_activity).days >= days:
             stale += 1
     return stale
 
 
-def _good_first_issue(issues: list[dict]) -> dict | None:
-    preferred_terms = ("good first issue", "good-first-issue", "help wanted", "documentation", "docs")
-    for issue in issues:
-        labels = " ".join(issue.get("labels", [])).lower()
-        title = (issue.get("title") or "").lower()
-        if any(term in labels or term in title for term in preferred_terms):
-            return issue
-    return issues[0] if issues else None
+def _issue_file_hints(issue: dict) -> list[str]:
+    text = f"{issue.get('title', '')}\n{issue.get('body', '')}"
+    matches = re.findall(
+        r"(?<![\w.-])([\w./-]+\.(?:py|js|jsx|ts|tsx|go|rs|java|md|toml|json|ya?ml|sh))\b",
+        text,
+        flags=re.IGNORECASE,
+    )
+    return list(dict.fromkeys(matches))[:3]
+
+
+def _issue_candidate(issue: dict) -> dict:
+    labels = " ".join(issue.get("labels", [])).lower()
+    title = (issue.get("title") or "").lower()
+    body = (issue.get("body") or "").lower()
+    score = 0
+    reasons = []
+    if "good first issue" in labels or "good-first-issue" in labels:
+        score += 10
+        reasons.append("maintainers labeled it as a good first issue")
+    if "help wanted" in labels:
+        score += 7
+        reasons.append("maintainers explicitly requested help")
+    if any(term in labels or term in title for term in ("documentation", "docs", "typo", "readme")):
+        score += 5
+        reasons.append("documentation-focused work is usually easier to review")
+    if any(term in labels or term in title for term in ("test", "config", "warning", "message")):
+        score += 3
+        reasons.append("the title suggests a bounded test or configuration change")
+    if "bug" in labels:
+        score += 2
+    if not issue.get("assignees"):
+        score += 2
+        reasons.append("no assignee is currently listed")
+    if issue.get("comments", 0) <= 3:
+        score += 1
+    if any(term in title for term in ("security", "architecture", "migration", "rewrite", "crash", "race condition")):
+        score -= 4
+        reasons.append("the title suggests higher-risk behavior")
+    if any(term in title for term in ("invitation", "showcase", "wallpaper", "fake engagement", "subscribe")):
+        score -= 8
+    file_hints = _issue_file_hints(issue)
+    if file_hints:
+        score += 3
+        reasons.append("the issue points to concrete files: " + ", ".join(f"`{path}`" for path in file_hints))
+    if len(body) >= 200:
+        score += 2
+        reasons.append("the issue contains enough description to investigate")
+
+    difficulty = "Beginner" if score >= 8 else "Intermediate" if score >= 3 else "Advanced/unclear"
+    if any(term in labels or term in title for term in ("documentation", "docs", "typo", "readme")):
+        target = f"`{file_hints[0]}`" if file_hints else "the referenced documentation"
+        first_step = f"Open {target}, verify the expected wording from the issue, and prepare the smallest documentation-only edit."
+    elif file_hints:
+        first_step = f"Open `{file_hints[0]}`, reproduce the reported behavior, then find or add its nearest test."
+    else:
+        first_step = "Read the full issue discussion, ask the maintainer to confirm scope, and locate the affected code before claiming it."
+    return {
+        "issue": issue,
+        "score": score,
+        "difficulty": difficulty,
+        "reasons": reasons[:3] or ["limited evidence is available; confirm scope with a maintainer"],
+        "first_step": first_step,
+    }
+
+
+def _beginner_issue_candidates(issues: list[dict], limit: int = 3) -> list[dict]:
+    ranked = sorted((_issue_candidate(issue) for issue in issues), key=lambda item: item["score"], reverse=True)
+    return [candidate for candidate in ranked if candidate["score"] >= 1][:limit]
 
 
 def build_executive_summary(snapshot: dict[str, Any], health: dict[str, Any]) -> str:
@@ -75,7 +339,7 @@ def build_executive_summary(snapshot: dict[str, Any], health: dict[str, Any]) ->
     open_prs_total = stats.get("open_prs_total", len(prs))
     stale_count = _stale_issue_count(issues)
     protected_count = sum(1 for branch in branches if branch.get("protected"))
-    good_first = _good_first_issue(issues)
+    candidates = _beginner_issue_candidates(issues)
     health_score = health.get("score", 0)
     health_label = health.get("label", "Unknown")
 
@@ -96,11 +360,12 @@ def build_executive_summary(snapshot: dict[str, Any], health: dict[str, Any]) ->
         lines.append("- ⚠️ **No protected branches detected** in the sampled branch list.")
 
     lines.extend(["", "### Recommendations", ""])
-    if good_first:
-        author = good_first.get("author") or "unknown"
+    if candidates:
+        candidate = candidates[0]
+        issue = candidate["issue"]
         lines.append(
-            f"- 💡 **Good first issue candidate:** #{good_first.get('number')} "
-            f"({good_first.get('title')}) by @{author}."
+            f"- 💡 **Best beginner candidate:** #{issue.get('number')} "
+            f"({issue.get('title')}) - assessed as **{candidate['difficulty']}** from available evidence."
         )
     elif open_issues_total == 0:
         lines.append(
@@ -137,7 +402,7 @@ def _branch_category(name: str) -> tuple[str, str]:
         if match:
             issue_hint = f" for issue #{match.group(1)}"
         return "Copilot suggestions", f"GitHub Copilot suggested code change{issue_hint}."
-    if lower.startswith(("ci/", "ci-", "test/", "tests/", "e2e/", "build/", "workflow/", "github-actions/")) or "ci" in lower or "e2e" in lower:
+    if lower.startswith(("ci/", "ci-", "ci_", "test/", "tests/", "e2e/", "build/", "workflow/", "github-actions/")) or "/ci/" in lower or "e2e" in lower:
         return "CI/CD work", f"CI/CD work: {_clean_branch_token(name)}."
     if lower.startswith(("fix/", "fix-", "fix_", "bug/", "bug-", "bug_", "bugfix/", "bugfix-", "bugfix_", "hotfix/", "hotfix-", "hotfix_")) or "fix" in lower:
         topic = re.sub(r"^(bugfix|hotfix|fix|bug)[/_-]?", "", name, flags=re.IGNORECASE)
@@ -170,6 +435,21 @@ def _branch_interest_score(name: str, category: str) -> int:
     return score
 
 
+def _branch_activity(branch: dict, open_prs: int) -> tuple[str, str]:
+    commit_date = _parse_github_date(branch.get("last_commit_date"))
+    if open_prs:
+        noun = "PR" if open_prs == 1 else "PRs"
+        return "Active", f"{open_prs} open {noun} use this as their source branch; inspect those PRs for current context"
+    if commit_date:
+        age_days = max(0, (datetime.now(timezone.utc) - commit_date).days)
+        if age_days > 90:
+            return "Likely abandoned", f"last commit was {age_days} days ago and no sampled open PR uses it; do not base your learning on it"
+        if age_days > 30:
+            return "Dormant", f"last commit was {age_days} days ago with no sampled open PR; verify with maintainers before using it"
+        return "Recently updated", f"last commit was {age_days} days ago, but no sampled open PR currently uses it"
+    return "Unknown activity", "commit recency was unavailable and no sampled open PR uses it; avoid making a strong conclusion"
+
+
 def build_issues_section(snapshot: dict[str, Any]) -> str:
     issues = snapshot.get("issues", [])
     stats = snapshot.get("stats", {})
@@ -193,6 +473,33 @@ def build_issues_section(snapshot: dict[str, Any]) -> str:
             lines.append("No open issues at this time.")
         return "\n".join(lines)
 
+    candidates = _beginner_issue_candidates(issues)
+    lines.extend(["### Beginner Contribution Shortlist", ""])
+    if candidates:
+        lines.append(
+            "These are ranked from the sampled issues using labels, scope clues, assignee status, "
+            "description quality, and concrete file references. Verify scope with maintainers before starting."
+        )
+        lines.append("")
+        for candidate in candidates:
+            issue = candidate["issue"]
+            reasons = "; ".join(candidate["reasons"])
+            lines.extend([
+                f"#### #{issue.get('number')} - {issue.get('title')}",
+                "",
+                f"- **Estimated difficulty:** {candidate['difficulty']}",
+                f"- **Why it may suit a student:** {reasons}.",
+                f"- **Suggested first step:** {candidate['first_step']}",
+                f"- **Issue:** [Open on GitHub]({issue.get('url', '#')})",
+                "",
+            ])
+    else:
+        lines.extend([
+            "No issue in the sample has enough evidence to recommend confidently to a beginner.",
+            "Ask maintainers for a small, well-scoped task instead of selecting an issue from its title alone.",
+            "",
+        ])
+
     lines.extend(["### Sampled Issue Details", ""])
 
     grouped: dict[str, list[dict]] = defaultdict(list)
@@ -200,9 +507,10 @@ def build_issues_section(snapshot: dict[str, Any]) -> str:
         grouped[_label_group(issue.get("labels", []))].append(issue)
 
     for group_name in sorted(grouped.keys()):
-        lines.append(f"### {group_name}")
+        group = grouped[group_name]
+        lines.append(f"### {group_name} ({len(group)} sampled)")
         lines.append("")
-        for issue in grouped[group_name]:
+        for issue in group[:5]:
             author = issue.get("author") or "unknown"
             url = issue.get("url", "#")
             lines.append(
@@ -213,6 +521,8 @@ def build_issues_section(snapshot: dict[str, Any]) -> str:
                 lines.append(f"  - Labels: {', '.join(issue['labels'])}")
             if issue.get("comments"):
                 lines.append(f"  - Comments: {issue['comments']}")
+        if len(group) > 5:
+            lines.append(f"- _{len(group) - 5} more sampled issues in this group are omitted; use GitHub for the full list._")
         lines.append("")
 
     return "\n".join(lines).strip()
@@ -246,7 +556,23 @@ def build_pull_requests_section(snapshot: dict[str, Any]) -> str:
     lines.append("### Open Pull Requests")
     lines.append("")
 
+    themes: Counter = Counter()
     for pr in prs:
+        text = f"{pr.get('title', '')} {pr.get('head', '')}".lower()
+        if any(token in text for token in ("fix", "bug", "hotfix")):
+            themes["Bug fixes"] += 1
+        elif any(token in text for token in ("feat", "feature", "add")):
+            themes["Features"] += 1
+        elif "doc" in text:
+            themes["Documentation"] += 1
+        elif any(token in text for token in ("ci", "test", "workflow")):
+            themes["Tests/CI"] += 1
+        else:
+            themes["Other"] += 1
+    lines.append(f"**Work themes in the sample:** {_top_counts(themes)}")
+    lines.append("")
+
+    for pr in prs[:12]:
         author = pr.get("author") or "unknown"
         url = pr.get("url", "#")
         draft = " (draft)" if pr.get("draft") else ""
@@ -255,6 +581,8 @@ def build_pull_requests_section(snapshot: dict[str, Any]) -> str:
             f"submitted by @{author}, **{pr.get('head')}** -> **{pr.get('base')}** - "
             f"[View PR]({url})"
         )
+    if len(prs) > 12:
+        lines.append(f"- _{len(prs) - 12} additional sampled PRs are omitted; use GitHub for the full queue._")
 
     return "\n".join(lines)
 
@@ -266,6 +594,7 @@ def build_branches_section(snapshot: dict[str, Any]) -> str:
     protected_count = sum(1 for branch in branches if branch.get("protected"))
     prs = snapshot.get("pull_requests", [])
     pr_targets = Counter(pr.get("base") or "unknown" for pr in prs)
+    pr_sources = Counter(pr.get("head") or "unknown" for pr in prs)
     lines = ["## Branches", ""]
 
     lines.append("### Real Numbers Summary")
@@ -298,6 +627,7 @@ def build_branches_section(snapshot: dict[str, Any]) -> str:
                 "name": name,
                 "description": description,
                 "score": _branch_interest_score(name, category),
+                "branch": branch,
             }
         )
 
@@ -357,15 +687,14 @@ def build_branches_section(snapshot: dict[str, Any]) -> str:
     lines.append("")
     if interesting:
         for item in interesting:
-            open_prs = pr_targets.get(item["name"], 0)
-            status = (
-                f"(active - {open_prs} open PR targeting it)"
-                if open_prs == 1
-                else f"(active - {open_prs} open PRs targeting it)"
-                if open_prs
-                else "(stale - no active PR)"
+            open_prs = pr_sources.get(item["name"], 0)
+            activity, guidance = _branch_activity(item.get("branch", {}), open_prs)
+            commit_date = item.get("branch", {}).get("last_commit_date")
+            date_text = commit_date[:10] if commit_date else "date unavailable"
+            lines.append(
+                f"- **{item['name']}** - {item['description']} "
+                f"**{activity}** ({date_text}): {guidance}."
             )
-            lines.append(f"- **{item['name']}** — {item['description']} {status}")
     else:
         lines.append("No non-automated branch names with enough signal were found in the sampled branch list.")
     lines.append("")

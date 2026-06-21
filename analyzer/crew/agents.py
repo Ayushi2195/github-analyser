@@ -1,9 +1,5 @@
 import os
 
-os.environ.setdefault("CREWAI_DISABLE_CACHE", "true")
-os.environ.setdefault("LITELLM_DISABLE_CACHE", "true")
-os.environ.setdefault("LITELLM_CACHE", "false")
-
 from crewai import Agent, LLM
 
 from analyzer.tools import (
@@ -16,8 +12,10 @@ from analyzer.tools import (
 
 def _llm() -> LLM:
     return LLM(
-        model="groq/llama-3.3-70b-versatile",
+        model="llama-3.3-70b-versatile",
+        provider="openai",
         api_key=os.environ.get("GROQ_API_KEY"),
+        base_url="https://api.groq.com/openai/v1",
     )
 
 

@@ -16,10 +16,6 @@ import importlib.util
 import os
 from pathlib import Path
 
-os.environ.setdefault("CREWAI_DISABLE_CACHE", "true")
-os.environ.setdefault("LITELLM_DISABLE_CACHE", "true")
-os.environ.setdefault("LITELLM_CACHE", "false")
-
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 

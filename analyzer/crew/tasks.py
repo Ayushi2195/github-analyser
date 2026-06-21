@@ -6,7 +6,6 @@ from analyzer.report_format import (
     BRANCHES_FORMAT,
     ISSUES_FORMAT,
     PRS_FORMAT,
-    STRUCTURE_FORMAT,
 )
 
 from .agents import branch_agent, issue_agent, pull_request_agent, structure_agent
@@ -21,14 +20,14 @@ def structure_task(repo_url: str, snapshot: dict) -> Task:
             f"Call get_repo_structure with repo_url={repo_url!r} if needed, "
             "but primary data is below — use it.\n\n"
             f"Repository metadata:\n{meta_str}\n\n"
-            f"Root files and folders:\n{files_str}\n\n"
-            f"{STRUCTURE_FORMAT}\n\n"
-            "Be specific and detailed. Reference actual file and folder names. "
-            "Do not write generic filler."
+            f"Root files, selected content previews, and directory children:\n{files_str}\n\n"
+            "Write 2-4 concise English sentences explaining the project's purpose and likely data flow. "
+            "Use only evidence present above. Do not list the tech stack or describe every file; Python does that deterministically. "
+            "Do not use words such as likely, probably, possibly, or may. Do not output any non-English text. "
+            "If evidence is insufficient, state exactly what could not be determined."
         ),
         expected_output=(
-            "Detailed Markdown with Project Overview, Tech Stack, "
-            "Key Files and Folders (every item), and Repository Stats."
+            "A short evidence-based English project overview with no title or file-by-file list."
         ),
         agent=structure_agent(),
     )
