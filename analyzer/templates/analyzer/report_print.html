@@ -3,6 +3,9 @@
 <head>
     <meta charset="utf-8">
     <title>RepoFlow Report — {{ repo_url }}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
         /*
          * PDF-optimized styles: solid colors only (no gradients/shadows).
@@ -12,7 +15,7 @@
         * { box-sizing: border-box; margin: 0; padding: 0; }
 
         body {
-            font-family: Arial, Helvetica, sans-serif;
+            font-family: Inter, Arial, Helvetica, sans-serif;
             font-size: 11px;
             line-height: 1.6;
             color: #334155;
@@ -22,11 +25,13 @@
         .cover {
             background: #4c1d95;
             color: #ffffff;
-            padding: 18px 24px;
-            margin-bottom: 10px;
+            padding: 34px 32px;
+            margin-bottom: 14px;
             border-radius: 8px;
             display: table;
             width: 100%;
+            min-height: 190px;
+            page-break-inside: avoid;
         }
 
         .cover-copy,
@@ -35,8 +40,8 @@
             vertical-align: middle;
         }
 
-        .cover-copy { width: 68%; }
-        .score-card { width: 32%; text-align: right; }
+        .cover-copy { width: 72%; }
+        .score-card { width: 28%; text-align: right; }
 
         .brand {
             font-size: 10px;
@@ -53,52 +58,43 @@
         }
 
         .cover h1 {
-            font-size: 25px;
-            font-weight: bold;
-            margin-bottom: 4px;
+            font-size: 32px;
+            line-height: 1.15;
+            font-weight: 800;
+            margin-bottom: 10px;
             color: #ffffff;
             word-break: break-word;
         }
 
         .cover-sub {
-            font-size: 10px;
+            font-size: 11px;
             color: #c4b5fd;
         }
 
-        .score-ring-wrap {
+        .score-badge {
             display: inline-block;
-            position: relative;
-            width: 92px;
-            height: 92px;
-            text-align: center;
-        }
-
-        .score-ring-wrap svg {
-            width: 92px;
-            height: 92px;
-            transform: rotate(-90deg);
-        }
-
-        .score-ring-text {
-            position: absolute;
-            inset: 0;
-            padding-top: 25px;
+            min-width: 112px;
+            padding: 18px 14px 15px;
+            border-radius: 8px;
+            background: {{ health_color }};
             text-align: center;
             color: #ffffff;
+            border: 2px solid rgba(255,255,255,0.65);
         }
 
-        .score-ring-number {
-            font-size: 22px;
-            font-weight: bold;
+        .score-badge-number {
+            font-size: 28px;
+            font-weight: 800;
             line-height: 1;
         }
 
-        .score-ring-label {
+        .score-badge-label {
             font-size: 8px;
-            margin-top: 3px;
-            color: #e9d5ff;
+            margin-top: 7px;
+            color: #ffffff;
             text-transform: uppercase;
             letter-spacing: 0.6px;
+            font-weight: 700;
         }
 
         .meta-table {
@@ -159,8 +155,8 @@
         }
 
         .summary-grid td {
-            width: 25%;
-            padding: 8px 10px;
+            width: 50%;
+            padding: 12px 14px;
             background: #f8fafc;
             border: 1px solid #e2e8f0;
             vertical-align: top;
@@ -180,6 +176,136 @@
             margin-top: 2px;
         }
 
+        .assessment-grid {
+            display: table;
+            width: 100%;
+            table-layout: fixed;
+            border-spacing: 7px 0;
+            margin: 8px -7px 16px;
+        }
+
+        .assessment-card {
+            display: table-cell;
+            width: 33.33%;
+            vertical-align: top;
+            padding: 12px;
+            border: 1px solid #e2e8f0;
+            border-left-width: 5px;
+            border-radius: 6px;
+            page-break-inside: avoid;
+        }
+
+        .assessment-critical { background: #fff7ed; border-left-color: #f97316; }
+        .assessment-risks { background: #fffbeb; border-left-color: #eab308; }
+        .assessment-recommendations { background: #f0fdf4; border-left-color: #22c55e; }
+
+        .assessment-card-title {
+            font-size: 12px;
+            font-weight: 800;
+            color: #1e293b;
+            margin-bottom: 9px;
+        }
+
+        .assessment-health {
+            margin-bottom: 9px;
+        }
+
+        .assessment-health strong {
+            display: block;
+            color: {{ health_color }};
+            font-size: 25px;
+            line-height: 1;
+        }
+
+        .assessment-health span {
+            display: inline-block;
+            margin-top: 5px;
+            padding: 2px 7px;
+            background: {{ health_color }};
+            color: #ffffff;
+            border-radius: 999px;
+            font-size: 8px;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+
+        .assessment-stat,
+        .assessment-line {
+            padding: 6px 0;
+            border-top: 1px solid rgba(148, 163, 184, 0.25);
+            color: #475569;
+            font-size: 9px;
+        }
+
+        .assessment-stat strong {
+            color: #1e293b;
+            font-size: 15px;
+            margin-right: 4px;
+        }
+
+        .recommendation-pill {
+            display: block;
+            padding: 5px 7px;
+            margin-bottom: 5px;
+            border: 1px solid #86efac;
+            border-radius: 999px;
+            background: #dcfce7;
+            color: #166534 !important;
+            font-size: 8px;
+            font-weight: 700;
+            text-decoration: none;
+        }
+
+        .branch-snapshot-section {
+            margin: 10px 0 14px;
+            page-break-inside: avoid;
+        }
+
+        .branch-snapshot-section h3 {
+            color: #1e293b;
+            border-left: 4px solid #6366f1;
+            border-bottom: 1px solid #ddd6fe;
+            padding: 5px 8px;
+            background: #ffffff;
+            margin-bottom: 8px;
+        }
+
+        .branch-snapshot-grid { font-size: 0; }
+
+        .branch-snapshot-card {
+            display: inline-block;
+            width: 31.8%;
+            min-height: 62px;
+            margin: 0 1.5% 7px 0;
+            padding: 8px;
+            vertical-align: top;
+            border: 1px solid #e2e8f0;
+            border-radius: 0;
+            background: #f8fafc;
+        }
+
+        .branch-snapshot-card strong {
+            display: block;
+            color: #4f46e5;
+            font-size: 17px;
+            line-height: 1;
+        }
+
+        .branch-snapshot-card span {
+            display: block;
+            color: #1e293b;
+            font-size: 9px;
+            font-weight: 700;
+            margin-top: 4px;
+        }
+
+        .branch-snapshot-card small {
+            display: block;
+            color: #64748b;
+            font-size: 7px;
+            margin-top: 3px;
+        }
+
         .insight-section {
             margin: 12px 0 16px;
         }
@@ -190,7 +316,9 @@
             font-weight: bold;
             margin-bottom: 8px;
             padding-bottom: 5px;
-            border-bottom: 2px solid #ede9fe;
+            border-left: 4px solid #6366f1;
+            border-bottom: 1px solid #ede9fe;
+            padding-left: 9px;
         }
 
         .issue-group {
@@ -292,6 +420,18 @@
             page-break-after: avoid;
         }
 
+        .report-prose h2.report-heading-green {
+            color: #047857;
+            background: #ecfdf5;
+            border-left-color: #10b981;
+        }
+
+        .report-prose h2.report-heading-yellow {
+            color: #b45309;
+            background: #fffbeb;
+            border-left-color: #f59e0b;
+        }
+
         .report-prose h3 {
             font-size: 12px;
             font-weight: bold;
@@ -378,6 +518,42 @@
         }
 
         .footer strong { color: #6366f1; }
+
+        @page {
+            size: A4;
+            margin: 12mm 10mm 14mm;
+        }
+
+        @media print {
+            body {
+                background: #ffffff !important;
+                color: #334155;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+
+            .cover,
+            .meta-table,
+            .summary-grid,
+            .issue-group,
+            .branch-group-grid,
+            .branch-table tr {
+                break-inside: avoid;
+                page-break-inside: avoid;
+            }
+
+            .report-prose h2,
+            .report-prose h3,
+            .insight-title {
+                break-after: avoid;
+                page-break-after: avoid;
+            }
+
+            a {
+                color: inherit;
+                text-decoration: none;
+            }
+        }
     </style>
 </head>
 <body>
@@ -389,15 +565,9 @@
             <p class="cover-sub">Generated {{ generated_at }}</p>
         </div>
         <div class="score-card">
-            <div class="score-ring-wrap">
-                <svg viewBox="0 0 92 92" aria-hidden="true">
-                    <circle cx="46" cy="46" r="40" fill="none" stroke="#7c3aed" stroke-width="9"></circle>
-                    <circle cx="46" cy="46" r="40" fill="none" stroke="{{ health_color }}" stroke-width="9" stroke-linecap="round" stroke-dasharray="{{ score_dash }} {{ score_gap }}"></circle>
-                </svg>
-                <div class="score-ring-text">
-                    <div class="score-ring-number">{{ health_score }}</div>
-                    <div class="score-ring-label">{{ health_label }}</div>
-                </div>
+            <div class="score-badge">
+                <div class="score-badge-number">{{ health_score }}/100</div>
+                <div class="score-badge-label">{{ health_label }}</div>
             </div>
         </div>
     </div>
@@ -431,6 +601,8 @@
                 <div class="summary-value">{{ pdf_summary.issues_sampled }}</div>
                 <div class="summary-text">Issues sampled</div>
             </td>
+        </tr>
+        <tr>
             <td>
                 <div class="summary-value">{{ pdf_summary.prs_total }}</div>
                 <div class="summary-text">Open PRs</div>
@@ -441,71 +613,6 @@
             </td>
         </tr>
     </table>
-
-    <div class="insight-section">
-        <div class="insight-title">Issue Groups</div>
-        <p class="section-note">{{ pdf_summary.issue_groups_note }}</p>
-        {% if pdf_summary.issue_groups %}
-            {% for group in pdf_summary.issue_groups %}
-            <div class="issue-group">
-                <span class="badge" style="background: {{ group.style.bg }}; border-color: {{ group.style.border }}; color: {{ group.style.color }};">{{ group.label }} · {{ group.count }} sampled</span>
-                <div class="section-note">Showing {{ group.displayed_count }} of {{ group.count }} sampled issues in this label.</div>
-                <ul class="issue-mini-list">
-                    {% for issue in group.issues %}
-                    <li><strong>#{{ issue.number }}</strong> {{ issue.title }} <span style="color:#64748b;">by @{{ issue.author|default:"unknown" }}</span></li>
-                    {% endfor %}
-                </ul>
-            </div>
-            {% endfor %}
-        {% else %}
-            <p>Issue label data unavailable for this report.</p>
-        {% endif %}
-    </div>
-
-    <div class="insight-section">
-        <div class="insight-title">Branch Snapshot</div>
-        {% if pdf_summary.branch_groups %}
-        <table class="branch-group-grid">
-            <tr>
-                {% for group in pdf_summary.branch_groups %}
-                <td>
-                    <div class="branch-group-count">{{ group.count }}</div>
-                    <div class="branch-group-title">{{ group.category }}</div>
-                    <div class="branch-group-examples">{{ group.examples|join:", " }}</div>
-                </td>
-                {% if forloop.counter|divisibleby:3 and not forloop.last %}
-            </tr>
-            <tr>
-                {% endif %}
-                {% endfor %}
-            </tr>
-        </table>
-        {% endif %}
-        {% if pdf_summary.branch_rows %}
-        <table class="branch-table">
-            <thead>
-                <tr>
-                    <th>Branch</th>
-                    <th>Last commit</th>
-                    <th>Open PRs targeting</th>
-                    <th>Protected</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for branch in pdf_summary.branch_rows %}
-                <tr>
-                    <td><strong>{{ branch.name }}</strong></td>
-                    <td>{{ branch.last_commit_date }}</td>
-                    <td>{{ branch.open_prs }}</td>
-                    <td>{{ branch.protected }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-        {% else %}
-            <p>Branch detail data unavailable for this report.</p>
-        {% endif %}
-    </div>
 
     <div class="report-body">
         <div class="report-prose">

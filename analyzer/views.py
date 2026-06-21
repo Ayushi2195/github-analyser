@@ -32,8 +32,8 @@ from analyzer.report_builder import _branch_category
 from .crew.crew import run_analysis_result
 
 SESSION_REPORT_KEY = "repoflow_report"
-CACHE_REPORT_VERSION = 5
-PDF_CACHE_VERSION = 2
+CACHE_REPORT_VERSION = 7
+PDF_CACHE_VERSION = 5
 PDF_STORAGE_DIR = Path(settings.BASE_DIR) / "generated_reports"
 
 def _format_count(value: int) -> str:
@@ -236,9 +236,9 @@ def index(request):
 
 
 def _health_color(score: int) -> str:
-    if score >= 80:
+    if score > 75:
         return "#10b981"
-    if score >= 65:
+    if score >= 50:
         return "#f59e0b"
     return "#ef4444"
 
@@ -531,6 +531,8 @@ def _stored_pdf_path(repo_url: str) -> Path | None:
     if not cached or not cached.pdf_path:
         return None
     path = Path(cached.pdf_path)
+    if not path.name.endswith(f"-v{PDF_CACHE_VERSION}.pdf"):
+        return None
     if path.exists() and path.is_file():
         return path
     return None

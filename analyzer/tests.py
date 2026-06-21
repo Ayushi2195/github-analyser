@@ -3,7 +3,9 @@ from django.test import SimpleTestCase
 from analyzer.github_api import GitHubAPIError, parse_repo_url
 from analyzer.health import compute_health_score
 from analyzer.report_builder import (
+    build_branch_snapshot,
     build_branches_section,
+    build_executive_summary,
     build_issues_section,
     build_structure_section,
 )
@@ -86,3 +88,20 @@ class StudentReportTests(SimpleTestCase):
         report = build_branches_section(snapshot)
         self.assertIn("source branch", report)
         self.assertIn("Likely abandoned", report)
+
+    def test_assessment_cards_and_branch_snapshot_are_visual(self):
+        snapshot = {
+            "meta": {"default_branch": "main"},
+            "issues": [],
+            "pull_requests": [],
+            "branches": [{"name": "main", "protected": False}],
+            "stats": {"open_issues_total": 0, "open_prs_total": 0},
+        }
+        assessment = build_executive_summary(
+            snapshot,
+            {"score": 65, "label": "Needs attention", "notes": []},
+        )
+        branch_snapshot = build_branch_snapshot(snapshot)
+        self.assertEqual(assessment.count("assessment-card assessment-"), 3)
+        self.assertIn("Repository Assessment", assessment)
+        self.assertIn("branch-snapshot-card", branch_snapshot)

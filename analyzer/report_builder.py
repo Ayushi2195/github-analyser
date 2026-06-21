@@ -8,6 +8,7 @@ import re
 import tomllib
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
+from html import escape
 from typing import Any
 
 
@@ -169,7 +170,7 @@ def build_structure_section(snapshot: dict[str, Any], ai_overview: str = "") -> 
     if re.search(r"[\u3400-\u9fff]", clean_ai) or any(term in clean_ai.lower() for term in (" likely ", " probably ", " may be ")):
         clean_ai = ""
 
-    lines = ["## Repository Structure Analysis", "", "### What This Project Is", "", overview]
+    lines = ['<h2 class="report-heading report-heading-green">Repository Structure Analysis</h2>', "", "### What This Project Is", "", overview]
     if clean_ai:
         lines.extend(["", clean_ai])
 
@@ -342,49 +343,94 @@ def build_executive_summary(snapshot: dict[str, Any], health: dict[str, Any]) ->
     candidates = _beginner_issue_candidates(issues)
     health_score = health.get("score", 0)
     health_label = health.get("label", "Unknown")
+    health_tone = "assessment-health-good" if health_score > 75 else "assessment-health-warn" if health_score >= 50 else "assessment-health-bad"
 
-    lines = [
-        "## Critical Findings / Risks / Recommendations",
-        "",
-        "### Critical Findings",
-        "",
-        f"- 🚨 **{stale_count} stale issue(s) over 90 days** in the sampled issue set.",
-        f"- 📊 **Repository health:** {health_score}/100 ({health_label}).",
-        "",
-        "### Risks",
-        "",
+    findings = [
+        f"<div class=\"assessment-stat\"><strong>{stale_count}</strong><span>stale sampled issues over 90 days</span></div>",
+        f"<div class=\"assessment-stat\"><strong>{len(branches)}</strong><span>branches inspected</span></div>",
     ]
+    risks = []
     if protected_count:
-        lines.append(f"- ✅ **{protected_count} protected branch(es)** found in the sampled branch list.")
+        risks.append(f"<div class=\"assessment-line\">✓ {protected_count} protected branch(es) detected</div>")
     else:
-        lines.append("- ⚠️ **No protected branches detected** in the sampled branch list.")
+        risks.append("<div class=\"assessment-line\">⚠ No protected branches detected</div>")
+    if open_issues_total > 10:
+        risks.append(f"<div class=\"assessment-line\">⚠ {open_issues_total} open issues may indicate a large triage backlog</div>")
+    if open_prs_total > 8:
+        risks.append(f"<div class=\"assessment-line\">⚠ {open_prs_total} open PRs may require significant review capacity</div>")
 
-    lines.extend(["", "### Recommendations", ""])
+    recommendations = []
     if candidates:
         candidate = candidates[0]
         issue = candidate["issue"]
-        lines.append(
-            f"- 💡 **Best beginner candidate:** #{issue.get('number')} "
-            f"({issue.get('title')}) - assessed as **{candidate['difficulty']}** from available evidence."
+        recommendations.append(
+            f"<a class=\"recommendation-pill\" href=\"{escape(str(issue.get('url', '#')))}\">"
+            f"Start with #{issue.get('number')}: {escape(str(issue.get('title', 'Issue')))}</a>"
         )
     elif open_issues_total == 0:
-        lines.append(
-            "- 💡 **No open GitHub issues found;** this repo may use an external issue tracker "
-            "or handle work outside public GitHub issues."
-        )
+        recommendations.append("<span class=\"recommendation-pill\">Check for an external issue tracker</span>")
     else:
-        lines.append("- 💡 **Good first issue candidate:** Data unavailable.")
+        recommendations.append("<span class=\"recommendation-pill\">Ask maintainers for a scoped beginner task</span>")
     if open_prs_total == 0:
-        lines.append(
-            "- 🔀 **No open pull requests found;** there may be no active public contribution queue right now."
-        )
+        recommendations.append("<span class=\"recommendation-pill\">Confirm whether contributions are currently active</span>")
     if not protected_count:
         default = snapshot.get("meta", {}).get("default_branch", "main")
-        lines.append(f"- 🔒 Protect **{default}** to reduce accidental direct pushes.")
+        recommendations.append(f"<span class=\"recommendation-pill\">Protect {escape(str(default))} from direct pushes</span>")
     if stale_count:
-        lines.append("- 🧹 Triage stale issues first; close outdated items or add status labels.")
+        recommendations.append("<span class=\"recommendation-pill\">Triage stale issues before adding new work</span>")
 
-    return "\n".join(lines)
+    return "\n".join([
+        '<h2 class="assessment-heading report-heading report-heading-yellow">Repository Assessment</h2>',
+        '<div class="assessment-grid">',
+        '<section class="assessment-card assessment-critical">',
+        '<div class="assessment-card-title">⚠ Critical Findings</div>',
+        f'<div class="assessment-health {health_tone}"><strong>{health_score}/100</strong><span>{escape(str(health_label))}</span></div>',
+        *findings,
+        '</section>',
+        '<section class="assessment-card assessment-risks">',
+        '<div class="assessment-card-title">🔥 Risks</div>',
+        *risks,
+        '</section>',
+        '<section class="assessment-card assessment-recommendations">',
+        '<div class="assessment-card-title">💡 Recommendations</div>',
+        '<div class="recommendation-list">',
+        *recommendations,
+        '</div>',
+        '</section>',
+        '</div>',
+    ])
+
+
+def build_branch_snapshot(snapshot: dict[str, Any]) -> str:
+    default = snapshot.get("meta", {}).get("default_branch", "main")
+    counts: Counter = Counter()
+    examples: dict[str, list[str]] = defaultdict(list)
+    for branch in snapshot.get("branches", []):
+        name = branch.get("name", "")
+        if not name:
+            continue
+        category = "Default branch" if name == default else _branch_category(name)[0]
+        counts[category] += 1
+        if len(examples[category]) < 3:
+            examples[category].append(name)
+    cards = []
+    for category, count in counts.most_common():
+        names = ", ".join(escape(name) for name in examples[category])
+        cards.append(
+            '<div class="branch-snapshot-card">'
+            f'<strong>{count}</strong><span>{escape(category)}</span>'
+            f'<small>{names}</small></div>'
+        )
+    if not cards:
+        cards.append('<div class="branch-snapshot-card"><strong>0</strong><span>Branches available</span></div>')
+    return "\n".join([
+        '<section class="branch-snapshot-section">',
+        '<h3>Branch Snapshot</h3>',
+        '<div class="branch-snapshot-grid">',
+        *cards,
+        '</div>',
+        '</section>',
+    ])
 
 
 def _clean_branch_token(value: str) -> str:
@@ -456,7 +502,7 @@ def build_issues_section(snapshot: dict[str, Any]) -> str:
     total = stats.get("open_issues_total", len(issues))
     sampled = stats.get("issues_sampled", len(issues))
     lines = [
-        "## Open Issues Report",
+        '<h2 class="report-heading report-heading-green">Open Issues Report</h2>',
         "",
         "### Real Numbers Summary",
         "",
@@ -536,7 +582,7 @@ def build_pull_requests_section(snapshot: dict[str, Any]) -> str:
     draft_count = sum(1 for pr in prs if pr.get("draft"))
     base_counts = Counter(pr.get("base") or "unknown" for pr in prs)
     lines = [
-        "## Pull Request Analysis Report",
+        '<h2 class="report-heading report-heading-green">Pull Request Analysis Report</h2>',
         "",
         "### Real Numbers Summary",
         "",
@@ -595,7 +641,7 @@ def build_branches_section(snapshot: dict[str, Any]) -> str:
     prs = snapshot.get("pull_requests", [])
     pr_targets = Counter(pr.get("base") or "unknown" for pr in prs)
     pr_sources = Counter(pr.get("head") or "unknown" for pr in prs)
-    lines = ["## Branches", ""]
+    lines = ['<h2 class="report-heading report-heading-green">Branches</h2>', ""]
 
     lines.append("### Real Numbers Summary")
     lines.append("")

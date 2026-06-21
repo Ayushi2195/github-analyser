@@ -60,6 +60,23 @@
   margin: 1.75rem 0 0.75rem;
 }
 
+.report-prose h2.report-heading {
+  padding: 0.65rem 0.85rem;
+  border-left: 5px solid;
+}
+
+.report-prose h2.report-heading-green {
+  color: #047857;
+  background: #ecfdf5;
+  border-left-color: #10b981;
+}
+
+.report-prose h2.report-heading-yellow {
+  color: #b45309;
+  background: #fffbeb;
+  border-left-color: #f59e0b;
+}
+
 .report-prose h3 {
   font-size: 1.1rem;
   font-weight: 600;
@@ -144,4 +161,127 @@
   color: #64748b;
   margin: 1rem 0;
   font-style: italic;
+}
+
+.report-prose .assessment-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+  margin: 1rem 0 1.75rem;
+}
+
+.report-prose .assessment-card {
+  padding: 1rem;
+  border: 1px solid #e2e8f0;
+  border-left-width: 5px;
+  border-radius: 8px;
+}
+
+.report-prose .assessment-critical { background: #fff7ed; border-left-color: #f97316; }
+.report-prose .assessment-risks { background: #fffbeb; border-left-color: #eab308; }
+.report-prose .assessment-recommendations { background: #f0fdf4; border-left-color: #22c55e; }
+
+.report-prose .assessment-card-title {
+  color: #1e293b;
+  font-weight: 800;
+  margin-bottom: 0.75rem;
+}
+
+.report-prose .assessment-health strong {
+  display: block;
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.report-prose .assessment-health span {
+  display: inline-block;
+  margin: 0.45rem 0;
+  padding: 0.2rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.report-prose .assessment-health-good strong { color: #059669; }
+.report-prose .assessment-health-good span { background: #d1fae5; color: #065f46; }
+.report-prose .assessment-health-warn strong { color: #d97706; }
+.report-prose .assessment-health-warn span { background: #fef3c7; color: #92400e; }
+.report-prose .assessment-health-bad strong { color: #e11d48; }
+.report-prose .assessment-health-bad span { background: #ffe4e6; color: #9f1239; }
+
+.report-prose .assessment-stat,
+.report-prose .assessment-line {
+  padding: 0.5rem 0;
+  border-top: 1px solid rgba(148, 163, 184, 0.25);
+  color: #475569;
+  font-size: 0.82rem;
+}
+
+.report-prose .assessment-stat strong {
+  color: #1e293b;
+  font-size: 1.15rem;
+}
+
+.report-prose .recommendation-pill {
+  display: block;
+  margin-bottom: 0.45rem;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid #86efac;
+  border-radius: 999px;
+  background: #dcfce7;
+  color: #166534;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.report-prose .branch-snapshot-section { margin: 1rem 0 1.5rem; }
+
+.report-prose .branch-snapshot-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.report-prose .branch-snapshot-card {
+  padding: 0.8rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 0;
+  background: #f8fafc;
+}
+
+.report-prose .branch-snapshot-card strong {
+  display: block;
+  color: #4f46e5;
+  font-size: 1.35rem;
+}
+
+.report-prose .branch-snapshot-card span {
+  display: block;
+  color: #1e293b;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.report-prose .branch-snapshot-card small {
+  display: block;
+  margin-top: 0.25rem;
+  color: #64748b;
+  font-size: 0.7rem;
+}
+
+.report-prose .branch-snapshot-section > h3 {
+  padding: 0.5rem 0.75rem;
+  border-left: 5px solid #6366f1;
+  border-bottom: 1px solid #ddd6fe;
+  color: #1e293b;
+  background: #ffffff;
+}
+
+@media (max-width: 768px) {
+  .report-prose .assessment-grid,
+  .report-prose .branch-snapshot-grid {
+    grid-template-columns: 1fr;
+  }
 }
