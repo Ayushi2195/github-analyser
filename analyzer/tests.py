@@ -1,7 +1,11 @@
+from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
+
 from django.test import SimpleTestCase
 
 from analyzer.github_api import GitHubAPIError, parse_repo_url
 from analyzer.health import compute_health_score
+from analyzer.mongo_cache import cache_is_fresh
 from analyzer.report_builder import (
     build_branch_snapshot,
     build_branches_section,
@@ -33,6 +37,79 @@ class HealthScoreTests(SimpleTestCase):
         }
         result = compute_health_score(snapshot)
         self.assertGreaterEqual(result["score"], 80)
+
+    def test_popular_repo_is_not_penalized_for_raw_issue_count(self):
+        snapshot = {
+            "meta": {"description": "Large project", "license": "BSD", "stars": 40000},
+            "files": [{"name": "README.md", "type": "file"}],
+            "issues": [{}] * 50,
+            "pull_requests": [],
+            "branches": [{"name": "main", "protected": False}],
+            "stats": {"open_issues_total": 200},
+        }
+        result = compute_health_score(snapshot)
+        issue_signal = next(
+            item for item in result["breakdown"]
+            if item["criterion"] == "Normalized issue load"
+        )
+        self.assertGreaterEqual(issue_signal["change"], 0)
+
+    def test_issue_load_is_penalized_relative_to_small_community(self):
+        snapshot = {
+            "meta": {"description": "Small project", "license": "MIT", "stars": 10},
+            "files": [{"name": "README.md", "type": "file"}],
+            "issues": [{}] * 50,
+            "pull_requests": [],
+            "branches": [{"name": "main", "protected": False}],
+            "stats": {"open_issues_total": 50},
+        }
+        result = compute_health_score(snapshot)
+        issue_signal = next(
+            item for item in result["breakdown"]
+            if item["criterion"] == "Normalized issue load"
+        )
+        self.assertLess(issue_signal["change"], 0)
+
+    def test_stale_prs_score_lower_than_recent_prs(self):
+        now = datetime(2026, 6, 22, tzinfo=timezone.utc)
+        base = {
+            "meta": {"description": "Project", "license": "MIT", "stars": 100},
+            "files": [{"name": "README.md", "type": "file"}],
+            "issues": [],
+            "branches": [{"name": "main", "protected": False}],
+        }
+        recent = {**base, "pull_requests": [{"created_at": "2026-06-15T00:00:00Z"}] * 10}
+        stale = {**base, "pull_requests": [{"created_at": "2024-01-01T00:00:00Z"}] * 10}
+        self.assertGreater(
+            compute_health_score(recent, now=now)["score"],
+            compute_health_score(stale, now=now)["score"],
+        )
+
+    def test_missing_branch_protection_never_deducts_points(self):
+        snapshot = {
+            "meta": {"description": "Student project", "license": "MIT"},
+            "files": [{"name": "README.md", "type": "file"}],
+            "issues": [],
+            "pull_requests": [],
+            "branches": [{"name": "main", "protected": False}],
+        }
+        result = compute_health_score(snapshot)
+        protection = next(
+            item for item in result["breakdown"]
+            if item["criterion"] == "Branch protection"
+        )
+        self.assertEqual(protection["change"], 0)
+        self.assertIn("no score deducted", " ".join(result["notes"]).lower())
+
+
+class AnalysisCacheTests(SimpleTestCase):
+    def test_analysis_younger_than_24_hours_is_fresh(self):
+        cached = SimpleNamespace(analyzed_at=datetime.now(timezone.utc) - timedelta(hours=23))
+        self.assertTrue(cache_is_fresh(cached))
+
+    def test_analysis_older_than_24_hours_is_stale(self):
+        cached = SimpleNamespace(analyzed_at=datetime.now(timezone.utc) - timedelta(hours=25))
+        self.assertFalse(cache_is_fresh(cached))
 
 
 class StudentReportTests(SimpleTestCase):

@@ -343,21 +343,30 @@ def build_executive_summary(snapshot: dict[str, Any], health: dict[str, Any]) ->
     candidates = _beginner_issue_candidates(issues)
     health_score = health.get("score", 0)
     health_label = health.get("label", "Unknown")
+    health_metrics = health.get("metrics", {})
     health_tone = "assessment-health-good" if health_score > 75 else "assessment-health-warn" if health_score >= 50 else "assessment-health-bad"
 
     findings = [
         f"<div class=\"assessment-stat\"><strong>{stale_count}</strong><span>stale sampled issues over 90 days</span></div>",
         f"<div class=\"assessment-stat\"><strong>{len(branches)}</strong><span>branches inspected</span></div>",
+        f"<div class=\"assessment-stat\"><strong>{health_metrics.get('issues_per_star', 0):.3f}</strong><span>open issues per star</span></div>",
     ]
     risks = []
     if protected_count:
         risks.append(f"<div class=\"assessment-line\">✓ {protected_count} protected branch(es) detected</div>")
-    else:
-        risks.append("<div class=\"assessment-line\">⚠ No protected branches detected</div>")
-    if open_issues_total > 10:
-        risks.append(f"<div class=\"assessment-line\">⚠ {open_issues_total} open issues may indicate a large triage backlog</div>")
-    if open_prs_total > 8:
-        risks.append(f"<div class=\"assessment-line\">⚠ {open_prs_total} open PRs may require significant review capacity</div>")
+    issue_load_status = health_metrics.get("issue_load_status", "")
+    if issue_load_status in {"elevated relative to community size", "high relative to community size"}:
+        risks.append(
+            f"<div class=\"assessment-line\">⚠ {open_issues_total} open issues are {escape(issue_load_status)}</div>"
+        )
+    stale_pr_count = health_metrics.get("stale_pr_count", 0)
+    sampled_prs = health_metrics.get("sampled_prs_with_dates", 0)
+    if stale_pr_count:
+        risks.append(
+            f"<div class=\"assessment-line\">⚠ {stale_pr_count} of {sampled_prs} sampled PRs have been open over 180 days</div>"
+        )
+    if not risks:
+        risks.append("<div class=\"assessment-line\">✓ No high-confidence maintenance risks detected</div>")
 
     recommendations = []
     if candidates:
@@ -375,7 +384,7 @@ def build_executive_summary(snapshot: dict[str, Any], health: dict[str, Any]) ->
         recommendations.append("<span class=\"recommendation-pill\">Confirm whether contributions are currently active</span>")
     if not protected_count:
         default = snapshot.get("meta", {}).get("default_branch", "main")
-        recommendations.append(f"<span class=\"recommendation-pill\">Protect {escape(str(default))} from direct pushes</span>")
+        recommendations.append(f"<span class=\"recommendation-pill\">Optional: protect {escape(str(default))} from direct pushes</span>")
     if stale_count:
         recommendations.append("<span class=\"recommendation-pill\">Triage stale issues before adding new work</span>")
 

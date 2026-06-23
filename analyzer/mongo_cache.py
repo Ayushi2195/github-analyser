@@ -135,6 +135,11 @@ def save_analysis_cache(
     open_issues_count = len(snapshot.get("issues", []))
     open_prs_count = len(snapshot.get("pull_requests", []))
     analyzed_at = timezone.localtime(timezone.now()).replace(tzinfo=None)
+    existing = RepoAnalysisCache.objects(repo_url=normalized_url).only(
+        "is_featured", "show_in_gallery"
+    ).first()
+    is_featured = bool(existing.is_featured) if existing else False
+    show_in_gallery = bool(existing.show_in_gallery) if existing else True
 
     saved = RepoAnalysisCache.objects(repo_url=normalized_url).modify(
         upsert=True,
@@ -154,8 +159,8 @@ def save_analysis_cache(
         set__tech_stack=_tech_stack(snapshot),
         set__report_sections=report_sections,
         set__pdf_path=pdf_path,
-        set__is_featured=False,
-        set__show_in_gallery=True,
+        set__is_featured=is_featured,
+        set__show_in_gallery=show_in_gallery,
     )
     print(f"MongoDB saved report: {owner}/{repo}", flush=True)
     return saved
@@ -189,6 +194,15 @@ def local_analyzed_at(cached: RepoAnalysisCache):
     if timezone.is_naive(analyzed_at):
         analyzed_at = timezone.make_aware(analyzed_at, timezone.get_current_timezone())
     return timezone.localtime(analyzed_at)
+
+
+def cache_is_fresh(cached: RepoAnalysisCache, max_age: timedelta = timedelta(hours=24)) -> bool:
+    """Return whether cached analysis data is young enough to reuse."""
+    analyzed_at = local_analyzed_at(cached)
+    if analyzed_at is None:
+        return False
+    age = timezone.localtime(timezone.now()) - analyzed_at
+    return timedelta(0) <= age < max_age
 
 
 def analyzed_ago_label(cached: RepoAnalysisCache) -> str:

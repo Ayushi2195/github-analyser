@@ -29,11 +29,11 @@ def _health_section(snapshot: dict, health: dict) -> str:
     meta = snapshot.get("meta", {})
     stats = snapshot.get("stats", {})
     notes = "\n".join(f"- {note}" for note in health["notes"])
-    deductions = [item for item in health.get("breakdown", []) if item.get("deduction")]
-    deduction_lines = "\n".join(
-        f"- **-{item['deduction']} points — {item['criterion']}:** {item['result']}"
-        for item in deductions
-    ) or "- **No deductions:** all checked repository-health signals passed."
+    score_lines = "\n".join(
+        f"- **{'+' if item.get('change', 0) > 0 else ''}{item.get('change', 0)} points — "
+        f"{item['criterion']}:** {item['result']}"
+        for item in health.get("breakdown", [])
+    )
     description = meta.get("description") or "No repository description was provided on GitHub."
     return (
         f"**Score:** {health['score']}/100 ({health['label']})\n\n"
@@ -46,9 +46,10 @@ def _health_section(snapshot: dict, health: dict) -> str:
         f"### Signals\n\n{notes}\n\n"
         f"### How This Score Is Calculated\n\n"
         f"RepoFlow uses a transparent, rule-based score rather than asking the AI to guess. "
-        f"Every repository starts at **100 points**. It checks the repository description, root README, "
-        f"sampled issue and PR volume, branch count, license, and branch protection.\n\n"
-        f"{deduction_lines}\n\n"
+        f"Every repository starts from a neutral **{health.get('baseline', 60)}-point baseline**. "
+        f"It rewards documentation, recent code pushes, CI/CD, contribution guidance, and fresh PRs. "
+        f"Issue load is normalized by stars, PR risk is based on age, and branch protection never causes a deduction.\n\n"
+        f"{score_lines}\n\n"
         f"**Labels:** 80–100 = Healthy, 60–79 = Needs attention, below 60 = At risk. "
         f"The score is a fast maintenance signal, not a judgment of code quality or security."
     )
@@ -71,7 +72,7 @@ def run_analysis_result(repo_url: str) -> dict:
         cache=False,
         verbose=False,
     )
-    crew.kickoff()
+    crew.kickoff() #runs the CrewAI workflow, but only for structure overview
     clear_snapshot_cache()
 
     print("Running issues agent...", flush=True)
@@ -82,7 +83,7 @@ def run_analysis_result(repo_url: str) -> dict:
     structure_md = build_structure_section(snapshot, ai_overview)
     summary_md = build_executive_summary(snapshot, health)
     health_md = _health_section(snapshot, health)
-    issues_md = build_issues_section(snapshot)
+    issues_md = build_issues_section(snapshot) #these are not LLM-generated here , they are built using deterministic python logic from GitHub API data.
     prs_md = build_pull_requests_section(snapshot)
     branch_snapshot_md = build_branch_snapshot(snapshot)
     branches_md = build_branches_section(snapshot)

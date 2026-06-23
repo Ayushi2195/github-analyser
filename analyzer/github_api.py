@@ -137,7 +137,7 @@ def _enrich_root_items(base: str, contents: list[dict]) -> list[dict]:
     for item in directory_items:
         try:
             listing = _get(f"{base}/contents/{item['path']}")
-            children[item["path"]] = [child.get("name", "") for child in listing[:12]] if isinstance(listing, list) else []
+            children[item["path"]] = [child.get("name", "") for child in listing[:50]] if isinstance(listing, list) else []
         except GitHubAPIError:
             children[item.get("path", "")] = []
 
@@ -252,6 +252,7 @@ def fetch_repo_snapshot(repo_url: str) -> dict[str, Any]:
             "license": (meta.get("license") or {}).get("spdx_id"),
             "created_at": meta.get("created_at"),
             "updated_at": meta.get("updated_at"),
+            "pushed_at": meta.get("pushed_at"),
         },
         "files": files,
         "issues": issues,

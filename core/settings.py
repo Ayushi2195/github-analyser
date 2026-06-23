@@ -16,7 +16,7 @@ import importlib.util
 import os
 from pathlib import Path
 
-# Build paths inside the project like this: BASE_DIR / 'subdir'.
+# Build paths inside the project like this: BASE_DIR / 'subdir' so points to the base dir:  github-analyser/
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
@@ -30,6 +30,7 @@ SECRET_KEY = os.environ.get(
 )
 
 # SECURITY WARNING: don't run with debug turned on in production!
+# if debug=true , django shows detailed errors ; so keep debug=false in production
 DEBUG = os.environ.get("DEBUG", "True").lower() in {"1", "true", "yes", "on"}
 
 ALLOWED_HOSTS = [
@@ -51,6 +52,7 @@ INSTALLED_APPS = [
     'analyzer',
 ]
 
+# sits between request and response
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
@@ -59,14 +61,16 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-]
+]  
 
+# if whitenoise is installed, add its middleware for static file handling in production
+# it serves static files like CSS in production deployments such as Railway
 if importlib.util.find_spec("whitenoise"):
     MIDDLEWARE.insert(1, 'whitenoise.middleware.WhiteNoiseMiddleware')
 
-ROOT_URLCONF = 'core.urls'
+ROOT_URLCONF = 'core.urls' #start url routing
 
-TEMPLATES = [
+TEMPLATES = [    #to render html
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
         'DIRS': [],
@@ -81,6 +85,7 @@ TEMPLATES = [
     },
 ]
 
+#INTERFACE BETWEEN WEB SERVER AND DJANGO APP / INTERFACE USED BY PRODUCTION WEB SERVERS TO SERVE DJANGO APPLICATIONS
 WSGI_APPLICATION = 'core.wsgi.application'
 
 
@@ -132,7 +137,7 @@ USE_TZ = True
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 if importlib.util.find_spec("whitenoise"):
-    STORAGES = {
+    STORAGES = {    # Compressed static files in production
         "default": {
             "BACKEND": "django.core.files.storage.FileSystemStorage",
         },

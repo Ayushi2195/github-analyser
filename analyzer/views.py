@@ -1,12 +1,11 @@
 import re
-from collections import Counter, defaultdict
 from datetime import datetime
 from pathlib import Path
 from statistics import mean
 
 import markdown
 from django.conf import settings
-from django.http import FileResponse, HttpResponse
+from django.http import FileResponse
 from django.shortcuts import redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse
@@ -17,6 +16,7 @@ from analyzer.mongo_cache import (
     RepoAnalysisCache,
     analyzed_ago_label,
     analyzed_at_label,
+    cache_is_fresh,
     cached_branch_count,
     cached_html,
     cached_markdown,
@@ -28,14 +28,13 @@ from analyzer.mongo_cache import (
     update_pdf_path,
 )
 from analyzer.pdf_generator import html_to_pdf
-from analyzer.report_builder import _branch_category
 from .crew.crew import run_analysis_result
 
-SESSION_REPORT_KEY = "repoflow_report"
-CACHE_REPORT_VERSION = 7
-PDF_CACHE_VERSION = 5
+CACHE_REPORT_VERSION = 8
+PDF_CACHE_VERSION = 6
 PDF_STORAGE_DIR = Path(settings.BASE_DIR) / "generated_reports"
 
+# turns stars for a repo , eg:45135 into "45.1k" for better look
 def _format_count(value: int) -> str:
     if value >= 1000:
         return f"{value / 1000:.1f}k".replace(".0k", "k")
@@ -95,13 +94,13 @@ def _gallery_items() -> list[dict]:
     if len(real_analyses) >= 6:
         return [_gallery_item(analysis) for analysis in real_analyses[:6]]
 
-    featured_needed = min(3, 6 - len(real_analyses))
+    featured_needed = min(3, 6 - len(real_analyses)) # if not enough real analyses, fill with featured ones, but max 3 featured to keep it fresh
     featured_analyses = safe_cached_analyses(limit=featured_needed, is_featured=True)
     analyses = [*real_analyses, *featured_analyses]
     return [_gallery_item(analysis) for analysis in analyses]
 
 
-def _safe_gallery_items() -> list[dict]:
+def _safe_gallery_items() -> list[dict]: 
     try:
         return _gallery_items()
     except Exception as exc:
@@ -109,16 +108,17 @@ def _safe_gallery_items() -> list[dict]:
         return []
 
 
-def _cached_real_analysis_count() -> int:
+# to show how many real analyses done, count the real analyses(whose isFeatured=False)
+def _cached_real_analysis_count() -> int: 
     try:
         connect_mongo()
-        return RepoAnalysisCache.objects(is_featured=False).count()
+        return RepoAnalysisCache.objects(is_featured=False).count() 
     except Exception as exc:
         print(f"Analysis count unavailable: {exc}", flush=True)
         return 0
 
 
-def _fallback_preview() -> dict:
+def _fallback_preview() -> dict:   #if MongoDB is not available or no cached data for the sample repo, show this hardcoded preview data for the sample repo (tiangolo/fastapi)
     return {
         "repo_display": "tiangolo/fastapi",
         "health_score": 80,
@@ -136,7 +136,7 @@ def _fallback_preview() -> dict:
     }
 
 
-def _score_tone(score: int) -> str:
+def _score_tone(score: int) -> str: #color to be displayed in GALLERY for health score
     if score >= 80:
         return "emerald"
     if score >= 65:
@@ -154,18 +154,20 @@ def _sample_preview() -> dict:
         return preview
 
     summary = (cached.report_sections or {}).get("pdf_summary") or {}
-    issue_titles = []
-    for group in summary.get("issue_groups", []):
-        for issue in group.get("issues", []):
-            title = issue.get("title")
-            number = issue.get("number")
-            if title:
-                prefix = f"#{number} " if number else ""
-                issue_titles.append(f"{prefix}{title}")
+    issue_titles = list(summary.get("issue_titles") or [])[:3]
+    if not issue_titles:
+        # Read reports saved before issue groups were removed from the PDF data.
+        for group in summary.get("issue_groups", []):
+            for issue in group.get("issues", []):
+                title = issue.get("title")
+                number = issue.get("number")
+                if title:
+                    prefix = f"#{number} " if number else ""
+                    issue_titles.append(f"{prefix}{title}")
+                if len(issue_titles) >= 3:
+                    break
             if len(issue_titles) >= 3:
                 break
-        if len(issue_titles) >= 3:
-            break
 
     score = cached.health_score or preview["health_score"]
     preview.update(
@@ -192,6 +194,7 @@ def _safe_sample_preview() -> dict:
         return _fallback_preview()
 
 
+#builds stats band on homepage [] [] [] []
 def _homepage_context(extra: dict | None = None) -> dict:
     total_real = _cached_real_analysis_count()
     gallery = _safe_gallery_items()
@@ -199,10 +202,10 @@ def _homepage_context(extra: dict | None = None) -> dict:
     context = {
         "gallery_items": gallery,
         "real_analysis_count": total_real,
-        "repos_analyzed": f"{total_real:,}",
-        "avg_health_score": avg_score,
+        "repos_analyzed": f"{total_real:,}",  # toal these many repos analyzed
+        "avg_health_score": avg_score, #like 73/100 Average health score across all analyses
         "healthy_count": sum(1 for item in gallery if item["health_score"] >= 80),
-        "language_count": len({item["primary_language"] for item in gallery if item["primary_language"]}),
+        "language_count": len({item["primary_language"] for item in gallery if item["primary_language"]}), #how many languages seen
         "sample_tags": ["Structure", "Health score", "Issues", "Branches"],
         "sample_preview": _safe_sample_preview(),
     }
@@ -231,6 +234,7 @@ def _safe_homepage_context(extra: dict | None = None) -> dict:
         return context
 
 
+# GET /  => shows homepage
 def index(request):
     return render(request, "analyzer/index.html", _safe_homepage_context())
 
@@ -243,82 +247,17 @@ def _health_color(score: int) -> str:
     return "#ef4444"
 
 
-def _format_date(value: str | None) -> str:
-    if not value:
-        return "Data unavailable"
-    try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-        return parsed.strftime("%d %b %Y")
-    except ValueError:
-        return value
-
-
-def _issue_label_style(label: str) -> dict:
-    label_lower = label.lower()
-    if "bug" in label_lower or "fix" in label_lower:
-        return {"bg": "#fee2e2", "border": "#fecaca", "color": "#991b1b"}
-    if "feature" in label_lower or "enhancement" in label_lower:
-        return {"bg": "#dbeafe", "border": "#bfdbfe", "color": "#1d4ed8"}
-    if "help" in label_lower or "good first" in label_lower:
-        return {"bg": "#dcfce7", "border": "#bbf7d0", "color": "#166534"}
-    if "doc" in label_lower:
-        return {"bg": "#fef3c7", "border": "#fde68a", "color": "#92400e"}
-    if label_lower == "unlabeled":
-        return {"bg": "#f1f5f9", "border": "#cbd5e1", "color": "#475569"}
-    return {"bg": "#eef2ff", "border": "#c7d2fe", "color": "#4338ca"}
-
-
 def _build_pdf_summary(snapshot: dict) -> dict:
     issues = snapshot.get("issues", [])
     prs = snapshot.get("pull_requests", [])
     branches = snapshot.get("branches", [])
-    default_branch = snapshot.get("meta", {}).get("default_branch")
     stats = snapshot.get("stats", {})
-    label_groups: dict[str, list[dict]] = defaultdict(list)
-    for issue in issues:
-        labels = issue.get("labels") or ["unlabeled"]
-        for label in labels:
-            label_groups[label].append(issue)
-
-    issue_groups = [
-        {
-            "label": label,
-            "count": len(grouped),
-            "issues": grouped[:5],
-            "displayed_count": min(len(grouped), 5),
-            "style": _issue_label_style(label),
-        }
-        for label, grouped in sorted(label_groups.items(), key=lambda item: (-len(item[1]), item[0]))[:6]
-    ]
-
-    pr_targets = Counter(pr.get("base") or "unknown" for pr in prs)
-    branch_category_counts: Counter = Counter()
-    branch_category_examples: dict[str, list[str]] = defaultdict(list)
-    for branch in branches:
-        name = branch.get("name") or ""
-        if not name:
-            continue
-        category = "Default branch" if name == default_branch else _branch_category(name)[0]
-        branch_category_counts[category] += 1
-        if len(branch_category_examples[category]) < 3:
-            branch_category_examples[category].append(name)
-    branch_groups = [
-        {
-            "category": category,
-            "count": count,
-            "examples": branch_category_examples.get(category, []),
-        }
-        for category, count in branch_category_counts.most_common(6)
-    ]
-    branch_rows = [
-        {
-            "name": branch.get("name") or "Data unavailable",
-            "last_commit_date": _format_date(branch.get("last_commit_date")),
-            "open_prs": pr_targets.get(branch.get("name"), 0),
-            "protected": "Yes" if branch.get("protected") else "No",
-        }
-        for branch in branches[:12]
-    ]
+    issue_titles = []
+    for issue in issues[:3]:
+        title = issue.get("title")
+        if title:
+            number = issue.get("number")
+            issue_titles.append(f"#{number} {title}" if number else title)
 
     return {
         "issues_total": stats.get("open_issues_total", len(issues)),
@@ -326,78 +265,52 @@ def _build_pdf_summary(snapshot: dict) -> dict:
         "prs_total": stats.get("open_prs_total", len(prs)),
         "prs_sampled": stats.get("pull_requests_sampled", len(prs)),
         "branches_sampled": stats.get("branches_sampled", len(branches)),
-        "issue_groups_note": "Counts are from the sampled GitHub API issues in this report. Each group shows up to 5 examples.",
-        "issue_groups": issue_groups,
-        "branch_groups": branch_groups,
-        "branch_rows": branch_rows,
+        "issue_titles": issue_titles,
     }
-
-
-def _normalize_pdf_summary(summary: dict) -> dict:
-    summary["issue_groups_note"] = (
-        "Counts are from the sampled GitHub API issues in this report. "
-        "Each group shows up to 5 examples."
-    )
-    for group in summary.get("issue_groups", []):
-        count = group.get("count", 0)
-        shown = len(group.get("issues", []))
-        group["displayed_count"] = min(shown, count, 5)
-        group.setdefault("style", _issue_label_style(group.get("label", "unlabeled")))
-    summary.setdefault("branch_groups", [])
-    return summary
 
 
 def _pdf_summary_for(repo_url: str) -> dict:
     try:
         cached = get_cached_analysis(repo_url)
         cached_summary = (cached.report_sections or {}).get("pdf_summary") if cached else None
-        if cached_summary and cached_summary.get("issue_groups") and cached_summary.get("branch_rows"):
-            return _normalize_pdf_summary(cached_summary)
+        if cached_summary:
+            return cached_summary
     except (GitHubAPIError, PyMongoError, OSError):
         pass
 
     try:
-        return _normalize_pdf_summary(_build_pdf_summary(fetch_repo_snapshot(repo_url)))
+        return _build_pdf_summary(fetch_repo_snapshot(repo_url))
     except (GitHubAPIError, PyMongoError, OSError):
-        return _normalize_pdf_summary({
+        return {
             "issues_total": "Data unavailable",
             "issues_sampled": "Data unavailable",
             "prs_total": "Data unavailable",
             "prs_sampled": "Data unavailable",
             "branches_sampled": "Data unavailable",
-            "issue_groups": [],
-            "branch_groups": [],
-            "branch_rows": [],
-        })
+            "issue_titles": [],
+        }
 
 
+# VERY IMP FUNCTION
 def _render_markdown_report(repo_url: str) -> tuple[str, str]:
     normalized_url = normalize_repo_url(repo_url)
     try:
         cached = get_cached_analysis(normalized_url)
-        if (
-            cached
-            and cached_markdown(cached)
-            and (cached.report_sections or {}).get("cache_version") == CACHE_REPORT_VERSION
-        ):
-            md_report = cached_markdown(cached)
-            html_report = cached_html(cached) or markdown.markdown(
-                md_report,
-                extensions=["tables", "fenced_code", "nl2br"],
-            )
-            if not _stored_pdf_path(normalized_url):
-                _try_write_pdf_file(normalized_url, html_report, md_report)
-            return md_report, html_report
+        if cached and cached_markdown(cached) and cache_is_fresh(cached):
+            print("Using MongoDB cache (analysis is less than 24 hours old).", flush=True)
+            return _cached_report_content(cached)
     except Exception as exc:
         print(f"Cache lookup skipped: {exc}", flush=True)
 
-    result = run_analysis_result(normalized_url)
-    md_report = result["markdown"]
-    html_report = markdown.markdown(
+    result = run_analysis_result(normalized_url) #what 4 crewai agents from crew/crew.py returns
+    md_report = result["markdown"]  #returns a dict
+    html_report = markdown.markdown(  #mkd gets converted to HTML using markdown library
         md_report,
         extensions=["tables", "fenced_code", "nl2br"],
+        # handles branch tables, f_c->code blocks, nl2br turns newlines into <br> tags for better formatting
     )
     report_sections = {
+        # sections is a dict with keys like 'structure', 'issues', 'pull_requests', 'branches' containing respective mkd sections generated by agents
         **result["sections"],
         "markdown": md_report,
         "html": html_report,
@@ -405,7 +318,7 @@ def _render_markdown_report(repo_url: str) -> tuple[str, str]:
         "cache_version": CACHE_REPORT_VERSION,
     }
     try:
-        print("Saving report to MongoDB...", flush=True)
+        print("Saving report to MongoDB...", flush=True) #after agents finish, save to mongodb
         save_analysis_cache(
             normalized_url,
             result["snapshot"],
@@ -417,6 +330,16 @@ def _render_markdown_report(repo_url: str) -> tuple[str, str]:
         print(f"MongoDB save skipped: {type(exc).__name__}: {exc}", flush=True)
     _try_write_pdf_file(normalized_url, html_report, md_report)
     print("Analysis completed.", flush=True)
+    return md_report, html_report
+
+
+def _cached_report_content(cached: RepoAnalysisCache) -> tuple[str, str]:
+    """Render a saved report without fetching GitHub data or running CrewAI."""
+    md_report = cached_markdown(cached)
+    html_report = cached_html(cached) or markdown.markdown(
+        md_report,
+        extensions=["tables", "fenced_code", "nl2br"],
+    )
     return md_report, html_report
 
 
@@ -443,16 +366,6 @@ def _repo_display_name(repo_url: str, md_report: str) -> str:
         return f"{owner}/{repo}"
     except GitHubAPIError:
         return repo_url
-
-
-def _cache_report(request, repo_url: str, html_report: str, md_report: str) -> None:
-    # Do not store full reports in Django sessions on Railway. Session writes can
-    # turn a successful analysis into a 500 if the session DB is unavailable.
-    return None
-
-
-def _get_cached_report(request, repo_url: str) -> tuple[str, str] | None:
-    return None
 
 
 def _build_pdf_html(repo_url: str, html_report: str, md_report: str) -> str:
@@ -552,33 +465,33 @@ def _pdf_file_response(path: Path, repo_url: str) -> FileResponse:
     return response
 
 
+# ANALYZE BUTTON FUNCTION - POST /analyze
 def analyze(request):
-    if request.method != "POST":
+    if request.method != "POST": #this view only accepts POST requests, if GET request comes, show homepage
         return render(request, "analyzer/index.html", _safe_homepage_context())
 
-    repo_url = request.POST.get("repo_url", "").strip()
-    if not repo_url:
+    repo_url = request.POST.get("repo_url", "").strip() # get the repo url from the form input in homepage
+    if not repo_url: #if no url pasted, show error
         return render(
             request,
             "analyzer/index.html",
             _safe_homepage_context({"error": "Please enter a GitHub repository URL.", "repo_url": repo_url}),
         )
 
-    try:
+    try: #else
         md_report, html_report = _render_markdown_report(repo_url)
-        _cache_report(request, repo_url, html_report, md_report)
         return render(
             request,
             "analyzer/index.html",
-            _safe_homepage_context({"report": html_report, "repo_url": repo_url}),
+            _safe_homepage_context({"report": html_report, "repo_url": repo_url}), #everything's fine
         )
-    except GitHubAPIError as exc:
+    except GitHubAPIError as exc: #errors related to GitHub API like rate limits, repo not found, etc
         return render(
             request,
             "analyzer/index.html",
             _safe_homepage_context({"error": str(exc), "repo_url": repo_url}),
         )
-    except Exception as exc:
+    except Exception as exc: #other exceptional errors
         return render(
             request,
             "analyzer/index.html",
@@ -606,19 +519,7 @@ def cached_report(request, owner: str, repo_name: str):
             }),
         )
 
-    if (cached.report_sections or {}).get("cache_version") != CACHE_REPORT_VERSION:
-        md_report, html_report = _render_markdown_report(repo_url)
-        try:
-            cached = get_cached_analysis(repo_url) or cached
-        except (GitHubAPIError, PyMongoError, OSError):
-            pass
-    else:
-        md_report = cached_markdown(cached)
-        html_report = cached_html(cached) or markdown.markdown(
-            md_report,
-            extensions=["tables", "fenced_code", "nl2br"],
-        )
-    _cache_report(request, repo_url, html_report, md_report)
+    md_report, html_report = _cached_report_content(cached)
     return render(
         request,
         "analyzer/report_detail.html",
@@ -640,27 +541,27 @@ def download_pdf(request):
     if stored_pdf:
         return _pdf_file_response(stored_pdf, repo_url)
 
-    cached = _get_cached_report(request, repo_url)
-    if cached:
-        md_report, html_report = cached
-    else:
-        try:
+    try:
+        cached = get_cached_analysis(repo_url)
+        if cached and cached_markdown(cached):
+            md_report, html_report = _cached_report_content(cached)
+        else:
             md_report, html_report = _render_markdown_report(repo_url)
-        except GitHubAPIError as exc:
-            return render(
-                request,
-                "analyzer/index.html",
-                _safe_homepage_context({"error": str(exc), "repo_url": repo_url}),
-            )
-        except Exception as exc:
-            return render(
-                request,
-                "analyzer/index.html",
-                _safe_homepage_context({
-                    "error": f"PDF export failed: {exc}",
-                    "repo_url": repo_url,
-                }),
-            )
+    except GitHubAPIError as exc:
+        return render(
+            request,
+            "analyzer/index.html",
+            _safe_homepage_context({"error": str(exc), "repo_url": repo_url}),
+        )
+    except Exception as exc:
+        return render(
+            request,
+            "analyzer/index.html",
+            _safe_homepage_context({
+                "error": f"PDF export failed: {exc}",
+                "repo_url": repo_url,
+            }),
+        )
 
     try:
         pdf_path = _write_pdf_file(repo_url, html_report, md_report)
