@@ -30,8 +30,8 @@ from analyzer.mongo_cache import (
 from analyzer.pdf_generator import html_to_pdf
 from .crew.crew import run_analysis_result
 
-CACHE_REPORT_VERSION = 8
-PDF_CACHE_VERSION = 6
+CACHE_REPORT_VERSION = 14
+PDF_CACHE_VERSION = 10
 PDF_STORAGE_DIR = Path(settings.BASE_DIR) / "generated_reports"
 
 # turns stars for a repo , eg:45135 into "45.1k" for better look
@@ -41,29 +41,38 @@ def _format_count(value: int) -> str:
     return str(value)
 
 
-def _gallery_health_style(score: int) -> dict[str, str]:
-    if score >= 80:
+def _scorecard_display(scorecard: dict) -> dict[str, str]:
+    score = scorecard.get("score")
+    if score is None:
         return {
-            "state": "healthy",
-            "text_class": "text-emerald-600",
-            "bar_class": "bg-emerald-500",
-        }
-    if score >= 65:
-        return {
+            "value": "N/A",
             "state": "attention",
-            "text_class": "text-amber-600",
-            "bar_class": "bg-amber-500",
+            "text_class": "text-slate-500",
+            "label": "Scorecard unavailable",
         }
+    try:
+        numeric = float(score)
+    except (TypeError, ValueError):
+        return {
+            "value": "N/A",
+            "state": "attention",
+            "text_class": "text-slate-500",
+            "label": "Scorecard unavailable",
+        }
+    text_class = "text-emerald-600" if numeric >= 7 else "text-amber-600" if numeric >= 4 else "text-rose-600"
+    value = f"{numeric:.1f}/10".replace(".0/10", "/10")
     return {
-        "state": "attention",
-        "text_class": "text-rose-600",
-        "bar_class": "bg-rose-500",
+        "value": value,
+        "state": "healthy",
+        "text_class": text_class,
+        "label": "OpenSSF Scorecard",
     }
 
 
 def _gallery_item(analysis: RepoAnalysisCache) -> dict:
-    health_score = analysis.health_score or 0
-    health_style = _gallery_health_style(health_score)
+    openssf_sections = analysis.openssf_sections or {}
+    scorecard = openssf_sections.get("scorecard") or {}
+    scorecard_display = _scorecard_display(scorecard)
     return {
         "full_name": f"{analysis.owner}/{analysis.repo_name}",
         "owner": analysis.owner,
@@ -75,11 +84,11 @@ def _gallery_item(analysis: RepoAnalysisCache) -> dict:
             kwargs={"owner": analysis.owner, "repo_name": analysis.repo_name},
         ),
         "is_featured": bool(getattr(analysis, "is_featured", False)),
-        "health_score": health_score,
-        "health_label": analysis.health_label or "Unknown",
-        "health_state": health_style["state"],
-        "health_text_class": health_style["text_class"],
-        "health_bar_class": health_style["bar_class"],
+        "scorecard_score": scorecard_display["value"],
+        "scorecard_label": scorecard_display["label"],
+        "health_label": scorecard_display["label"],
+        "health_state": scorecard_display["state"],
+        "health_text_class": scorecard_display["text_class"],
         "primary_language": analysis.primary_language or "Unknown",
         "tech_stack": analysis.tech_stack or [analysis.primary_language or "Repo"],
         "stars": _format_count(analysis.stars or 0),
@@ -122,7 +131,8 @@ def _fallback_preview() -> dict:   #if MongoDB is not available or no cached dat
     return {
         "repo_display": "tiangolo/fastapi",
         "health_score": 80,
-        "health_label": "Healthy",
+        "scorecard_score": "N/A",
+        "health_label": "Security signals",
         "health_class": "emerald",
         "has_preview_data": False,
         "issues_total": 0,
@@ -136,7 +146,7 @@ def _fallback_preview() -> dict:   #if MongoDB is not available or no cached dat
     }
 
 
-def _score_tone(score: int) -> str: #color to be displayed in GALLERY for health score
+def _score_tone(score: int) -> str:
     if score >= 80:
         return "emerald"
     if score >= 65:
@@ -153,7 +163,8 @@ def _sample_preview() -> dict:
     if not cached:
         return preview
 
-    summary = (cached.report_sections or {}).get("pdf_summary") or {}
+    report_sections = ((cached.openssf_sections or {}).get("report") or {})
+    summary = report_sections.get("pdf_summary") or {}
     issue_titles = list(summary.get("issue_titles") or [])[:3]
     if not issue_titles:
         # Read reports saved before issue groups were removed from the PDF data.
@@ -169,16 +180,18 @@ def _sample_preview() -> dict:
             if len(issue_titles) >= 3:
                 break
 
-    score = cached.health_score or preview["health_score"]
+    security_summary = (cached.openssf_sections or {}).get("security_summary") or {}
+    score = security_summary.get("score", preview["health_score"])
     preview.update(
         {
             "repo_display": f"{cached.owner}/{cached.repo_name}",
             "health_score": score,
-            "health_label": cached.health_label or preview["health_label"],
+            "scorecard_score": _scorecard_display((cached.openssf_sections or {}).get("scorecard") or {})["value"],
+            "health_label": security_summary.get("label") or preview["health_label"],
             "health_class": _score_tone(score),
             "has_preview_data": True,
-            "issues_total": summary.get("issues_total", cached.open_issues_count or 0),
-            "prs_total": summary.get("prs_total", cached.open_prs_count or 0),
+            "issues_total": summary.get("issues_total", 0),
+            "prs_total": 0,
             "branches_sampled": summary.get("branches_sampled", cached_branch_count(cached)),
             "issue_titles": issue_titles or preview["issue_titles"],
         }
@@ -198,15 +211,22 @@ def _safe_sample_preview() -> dict:
 def _homepage_context(extra: dict | None = None) -> dict:
     total_real = _cached_real_analysis_count()
     gallery = _safe_gallery_items()
-    avg_score = round(mean(item["health_score"] for item in gallery)) if gallery else 0
+    score_values = []
+    for item in gallery:
+        raw = item.get("scorecard_score", "N/A").replace("/10", "")
+        try:
+            score_values.append(float(raw))
+        except (TypeError, ValueError):
+            pass
+    avg_score = round(mean(score_values), 1) if score_values else "N/A"
     context = {
         "gallery_items": gallery,
         "real_analysis_count": total_real,
         "repos_analyzed": f"{total_real:,}",  # toal these many repos analyzed
-        "avg_health_score": avg_score, #like 73/100 Average health score across all analyses
-        "healthy_count": sum(1 for item in gallery if item["health_score"] >= 80),
+        "avg_health_score": avg_score,
+        "healthy_count": len(score_values),
         "language_count": len({item["primary_language"] for item in gallery if item["primary_language"]}), #how many languages seen
-        "sample_tags": ["Structure", "Health score", "Issues", "Branches"],
+        "sample_tags": ["Structure", "OpenSSF", "OSV", "Branches"],
         "sample_preview": _safe_sample_preview(),
     }
     if extra:
@@ -226,7 +246,7 @@ def _safe_homepage_context(extra: dict | None = None) -> dict:
             "avg_health_score": 0,
             "healthy_count": 0,
             "language_count": 0,
-            "sample_tags": ["Structure", "Health score", "Issues", "Branches"],
+            "sample_tags": ["Structure", "OpenSSF", "OSV", "Branches"],
             "sample_preview": _fallback_preview(),
         }
         if extra:
@@ -239,19 +259,13 @@ def index(request):
     return render(request, "analyzer/index.html", _safe_homepage_context())
 
 
-def _health_color(score: int) -> str:
-    if score > 75:
-        return "#10b981"
-    if score >= 50:
-        return "#f59e0b"
-    return "#ef4444"
-
-
 def _build_pdf_summary(snapshot: dict) -> dict:
     issues = snapshot.get("issues", [])
-    prs = snapshot.get("pull_requests", [])
     branches = snapshot.get("branches", [])
     stats = snapshot.get("stats", {})
+    scorecard = snapshot.get("openssf_scorecard") or {}
+    badge = snapshot.get("best_practices_badge") or {}
+    vulns = (snapshot.get("osv_vulnerabilities") or {}).get("vulns") or []
     issue_titles = []
     for issue in issues[:3]:
         title = issue.get("title")
@@ -262,8 +276,9 @@ def _build_pdf_summary(snapshot: dict) -> dict:
     return {
         "issues_total": stats.get("open_issues_total", len(issues)),
         "issues_sampled": stats.get("issues_sampled", len(issues)),
-        "prs_total": stats.get("open_prs_total", len(prs)),
-        "prs_sampled": stats.get("pull_requests_sampled", len(prs)),
+        "scorecard_status": "Available" if scorecard.get("available") else "Unavailable",
+        "best_practices_level": (badge.get("level") or "None").title(),
+        "osv_vulnerability_count": len(vulns),
         "branches_sampled": stats.get("branches_sampled", len(branches)),
         "issue_titles": issue_titles,
     }
@@ -272,7 +287,7 @@ def _build_pdf_summary(snapshot: dict) -> dict:
 def _pdf_summary_for(repo_url: str) -> dict:
     try:
         cached = get_cached_analysis(repo_url)
-        cached_summary = (cached.report_sections or {}).get("pdf_summary") if cached else None
+        cached_summary = (((cached.openssf_sections or {}).get("report") or {}).get("pdf_summary")) if cached else None
         if cached_summary:
             return cached_summary
     except (GitHubAPIError, PyMongoError, OSError):
@@ -284,8 +299,9 @@ def _pdf_summary_for(repo_url: str) -> dict:
         return {
             "issues_total": "Data unavailable",
             "issues_sampled": "Data unavailable",
-            "prs_total": "Data unavailable",
-            "prs_sampled": "Data unavailable",
+            "scorecard_status": "Data unavailable",
+            "best_practices_level": "Data unavailable",
+            "osv_vulnerability_count": "Data unavailable",
             "branches_sampled": "Data unavailable",
             "issue_titles": [],
         }
@@ -350,13 +366,6 @@ def _strip_first_h1(html_report: str) -> str:
     return html
 
 
-def _parse_health(md_report: str) -> tuple[int, str]:
-    match = re.search(r"\*\*Score:\*\* (\d+)/100 \(([^)]+)\)", md_report)
-    if match:
-        return int(match.group(1)), match.group(2)
-    return 0, "Unknown"
-
-
 def _repo_display_name(repo_url: str, md_report: str) -> str:
     match = re.search(r"\*\*Repository:\*\* \[([^\]]+)\]", md_report)
     if match:
@@ -369,9 +378,7 @@ def _repo_display_name(repo_url: str, md_report: str) -> str:
 
 
 def _build_pdf_html(repo_url: str, html_report: str, md_report: str) -> str:
-    health_score, health_label = _parse_health(md_report)
     pdf_summary = _pdf_summary_for(repo_url)
-    score_dash = max(0, min(100, health_score)) * 2.51
     return render_to_string(
         "analyzer/report_print.html",
         {
@@ -379,11 +386,6 @@ def _build_pdf_html(repo_url: str, html_report: str, md_report: str) -> str:
             "repo_display": _repo_display_name(repo_url, md_report),
             "report_html": _strip_first_h1(html_report),
             "generated_at": datetime.now().strftime("%d %b %Y, %I:%M %p"),
-            "health_score": health_score,
-            "health_label": health_label,
-            "health_color": _health_color(health_score),
-            "score_dash": score_dash,
-            "score_gap": 251 - score_dash,
             "pdf_summary": pdf_summary,
         },
     )
@@ -437,6 +439,10 @@ def _try_write_pdf_file(repo_url: str, html_report: str, md_report: str) -> Path
 
 
 def _stored_pdf_path(repo_url: str) -> Path | None:
+    deterministic_path = _pdf_cache_path(repo_url)
+    if deterministic_path.exists() and deterministic_path.is_file():
+        return deterministic_path
+
     try:
         cached = get_cached_analysis(repo_url)
     except (GitHubAPIError, PyMongoError, OSError):

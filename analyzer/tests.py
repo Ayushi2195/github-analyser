@@ -1,17 +1,20 @@
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from django.test import SimpleTestCase
 
-from analyzer.github_api import GitHubAPIError, parse_repo_url
-from analyzer.health import compute_health_score
+from analyzer.github_api import GitHubAPIError, fetch_best_practices_badge, fetch_osv_vulnerabilities, parse_repo_url
 from analyzer.mongo_cache import cache_is_fresh
 from analyzer.report_builder import (
     build_branch_snapshot,
     build_branches_section,
-    build_executive_summary,
-    build_issues_section,
+    build_good_first_issues_section,
+    build_recommendations_section,
+    build_security_section,
+    build_security_insights_section,
     build_structure_section,
+    build_vulnerabilities_section,
 )
 
 
@@ -25,81 +28,47 @@ class GitHubURLTests(SimpleTestCase):
         with self.assertRaises(GitHubAPIError):
             parse_repo_url("https://gitlab.com/foo/bar")
 
+    def test_best_practices_uses_url_query_parameter(self):
+        calls = []
 
-class HealthScoreTests(SimpleTestCase):
-    def test_healthy_repo_scores_high(self):
-        snapshot = {
-            "meta": {"description": "Test", "license": "MIT"},
-            "files": [{"name": "README.md", "type": "file"}],
-            "issues": [],
-            "pull_requests": [],
-            "branches": [{"name": "main", "protected": True}],
-        }
-        result = compute_health_score(snapshot)
-        self.assertGreaterEqual(result["score"], 80)
+        class Response:
+            ok = True
 
-    def test_popular_repo_is_not_penalized_for_raw_issue_count(self):
-        snapshot = {
-            "meta": {"description": "Large project", "license": "BSD", "stars": 40000},
-            "files": [{"name": "README.md", "type": "file"}],
-            "issues": [{}] * 50,
-            "pull_requests": [],
-            "branches": [{"name": "main", "protected": False}],
-            "stats": {"open_issues_total": 200},
-        }
-        result = compute_health_score(snapshot)
-        issue_signal = next(
-            item for item in result["breakdown"]
-            if item["criterion"] == "Normalized issue load"
-        )
-        self.assertGreaterEqual(issue_signal["change"], 0)
+            def json(self):
+                return []
 
-    def test_issue_load_is_penalized_relative_to_small_community(self):
-        snapshot = {
-            "meta": {"description": "Small project", "license": "MIT", "stars": 10},
-            "files": [{"name": "README.md", "type": "file"}],
-            "issues": [{}] * 50,
-            "pull_requests": [],
-            "branches": [{"name": "main", "protected": False}],
-            "stats": {"open_issues_total": 50},
-        }
-        result = compute_health_score(snapshot)
-        issue_signal = next(
-            item for item in result["breakdown"]
-            if item["criterion"] == "Normalized issue load"
-        )
-        self.assertLess(issue_signal["change"], 0)
+        class Session:
+            def get(self, url, params=None, timeout=None):
+                calls.append((url, params, timeout))
+                return Response()
 
-    def test_stale_prs_score_lower_than_recent_prs(self):
-        now = datetime(2026, 6, 22, tzinfo=timezone.utc)
-        base = {
-            "meta": {"description": "Project", "license": "MIT", "stars": 100},
-            "files": [{"name": "README.md", "type": "file"}],
-            "issues": [],
-            "branches": [{"name": "main", "protected": False}],
-        }
-        recent = {**base, "pull_requests": [{"created_at": "2026-06-15T00:00:00Z"}] * 10}
-        stale = {**base, "pull_requests": [{"created_at": "2024-01-01T00:00:00Z"}] * 10}
-        self.assertGreater(
-            compute_health_score(recent, now=now)["score"],
-            compute_health_score(stale, now=now)["score"],
-        )
+        with patch("analyzer.github_api._session", return_value=Session()):
+            fetch_best_practices_badge("django", "django")
 
-    def test_missing_branch_protection_never_deducts_points(self):
-        snapshot = {
-            "meta": {"description": "Student project", "license": "MIT"},
-            "files": [{"name": "README.md", "type": "file"}],
-            "issues": [],
-            "pull_requests": [],
-            "branches": [{"name": "main", "protected": False}],
-        }
-        result = compute_health_score(snapshot)
-        protection = next(
-            item for item in result["breakdown"]
-            if item["criterion"] == "Branch protection"
-        )
-        self.assertEqual(protection["change"], 0)
-        self.assertIn("no score deducted", " ".join(result["notes"]).lower())
+        self.assertEqual(calls[0][1], {"url": "https://github.com/django/django"})
+        self.assertNotIn("pq", calls[0][1])
+
+    def test_osv_uses_repo_url_body_and_15_second_timeout(self):
+        calls = []
+
+        class Response:
+            status_code = 200
+            ok = True
+
+            def json(self):
+                return {"vulns": []}
+
+        class Session:
+            def post(self, url, json=None, headers=None, timeout=None):
+                calls.append((url, json, timeout))
+                return Response()
+
+        with patch("analyzer.github_api._session", return_value=Session()):
+            fetch_osv_vulnerabilities("django", "django")
+
+        self.assertEqual(calls[0][0], "https://api.osv.dev/v1/query")
+        self.assertEqual(calls[0][1], {"url": "https://github.com/django/django"})
+        self.assertEqual(calls[0][2], 15)
 
 
 class AnalysisCacheTests(SimpleTestCase):
@@ -119,6 +88,7 @@ class StudentReportTests(SimpleTestCase):
             "meta": {"full_name": "student/demo", "language": "Python", "default_branch": "main"},
             "files": [
                 {"name": "README.md", "type": "file", "children": []},
+                {"name": "random.bin", "type": "file", "children": []},
                 {
                     "name": "pyproject.toml",
                     "type": "file",
@@ -129,8 +99,11 @@ class StudentReportTests(SimpleTestCase):
             ],
         }
         report = build_structure_section(snapshot, "可能 related to something")
+        self.assertIn("```text", report)
+        self.assertIn("student/demo/", report)
         self.assertIn("Django web framework", report)
-        self.assertIn("Configuration Files (Not Technologies)", report)
+        self.assertIn("Verified Tech Stack", report)
+        self.assertNotIn("Repository root item", report)
         self.assertNotIn("可能", report)
 
     def test_beginner_issue_has_reason_and_first_step(self):
@@ -147,7 +120,7 @@ class StudentReportTests(SimpleTestCase):
             }],
             "stats": {"open_issues_total": 1, "issues_sampled": 1, "api_page_size": 100},
         }
-        report = build_issues_section(snapshot)
+        report = build_good_first_issues_section(snapshot)
         self.assertIn("Estimated difficulty", report)
         self.assertIn("documentation-only edit", report)
 
@@ -166,19 +139,174 @@ class StudentReportTests(SimpleTestCase):
         self.assertIn("source branch", report)
         self.assertIn("Likely abandoned", report)
 
-    def test_assessment_cards_and_branch_snapshot_are_visual(self):
+    def test_protected_branches_are_summarized(self):
+        snapshot = {
+            "meta": {"default_branch": "main"},
+            "stats": {"branches_sampled": 3},
+            "pull_requests": [],
+            "branches": [
+                {"name": "main", "protected": True},
+                {"name": "release", "protected": True},
+                {"name": "scratch", "protected": False},
+            ],
+        }
+        report = build_branches_section(snapshot)
+        self.assertIn("2 of 3 sampled branches are protected", report)
+        self.assertIn("Unprotected sampled branches", report)
+        self.assertIn("scratch", report)
+        self.assertNotIn("main** — protected", report)
+
+    def test_recommendations_and_branch_snapshot_are_generated(self):
         snapshot = {
             "meta": {"default_branch": "main"},
             "issues": [],
             "pull_requests": [],
             "branches": [{"name": "main", "protected": False}],
             "stats": {"open_issues_total": 0, "open_prs_total": 0},
+            "security_insights": {},
+            "best_practices_badge": {"found": False},
+            "osv_vulnerabilities": {"vulns": []},
         }
-        assessment = build_executive_summary(
-            snapshot,
-            {"score": 65, "label": "Needs attention", "notes": []},
-        )
+        recommendations = build_recommendations_section(snapshot)
         branch_snapshot = build_branch_snapshot(snapshot)
-        self.assertEqual(assessment.count("assessment-card assessment-"), 3)
-        self.assertIn("Repository Assessment", assessment)
+        self.assertIn("Recommendations", recommendations)
+        self.assertIn("SECURITY.md", recommendations)
         self.assertIn("branch-snapshot-card", branch_snapshot)
+
+
+class SecurityReportTests(SimpleTestCase):
+    def test_scorecard_404_is_graceful(self):
+        report = build_security_section({
+            "openssf_scorecard": {"available": False, "status_code": 404}
+        })
+        self.assertIn("OpenSSF Scorecard data not available", report)
+
+    def test_scorecard_checks_include_score_reason_and_indicator(self):
+        report = build_security_section({
+            "openssf_scorecard": {
+                "available": True,
+                "score": 8.4,
+                "checks": [
+                    {"name": "Maintained", "score": 10, "reason": "30 commits found"},
+                    {"name": "Branch-Protection", "score": 0, "reason": "No protection found"},
+                ],
+            }
+        })
+        self.assertIn("8.4/10", report)
+        self.assertIn("Pass", report)
+        self.assertIn("Maintained", report)
+        self.assertIn("Fail", report)
+        self.assertIn("Branch-Protection", report)
+        self.assertIn("No protection found", report)
+
+    def test_scorecard_translates_common_raw_findings(self):
+        report = build_security_section({
+            "openssf_scorecard": {
+                "available": True,
+                "score": 5.1,
+                "checks": [
+                    {
+                        "name": "Branch-Protection",
+                        "score": 0,
+                        "reason": "internal error: github tokens can't read classic branch protection rules",
+                    },
+                    {
+                        "name": "Pinned-Dependencies",
+                        "score": 0,
+                        "reason": "dependency not pinned by hash",
+                    },
+                    {
+                        "name": "Signed-Releases",
+                        "score": 0,
+                        "reason": "no releases found",
+                    },
+                ],
+            }
+        })
+        self.assertIn("classic branch protection", report)
+        self.assertIn("stricter security", report)
+        self.assertIn("supply-chain risk", report)
+        self.assertIn("may publish through npm", report)
+        self.assertNotIn("internal error", report.lower())
+
+    def test_best_practices_falls_back_to_scorecard_check(self):
+        report = build_security_section({
+            "openssf_scorecard": {
+                "available": True,
+                "score": 7,
+                "checks": [
+                    {"name": "CII-Best-Practices", "score": 6, "reason": "Badge criteria met"},
+                ],
+            },
+            "best_practices_badge": {"found": False},
+        })
+        self.assertIn("Best Practices signal found in Scorecard", report)
+        self.assertIn("Passing", report)
+
+    def test_security_section_includes_best_practices_badge(self):
+        report = build_security_section({
+            "openssf_scorecard": {"available": False, "status_code": 404},
+            "best_practices_badge": {"found": True, "level": "silver"},
+            "security_insights": {},
+        })
+        self.assertIn("OpenSSF Best Practices Badge", report)
+        self.assertIn("Silver", report)
+
+    def test_security_insights_recommends_security_policy_when_missing(self):
+        report = build_security_insights_section({
+            "security_insights": {
+                "has_security_insights": False,
+                "has_security_md": False,
+                "has_github_security_md": False,
+            }
+        })
+        self.assertIn("SECURITY-INSIGHTS.yml/yaml", report)
+        self.assertIn("Missing", report)
+        self.assertIn("Add a SECURITY.md file", report)
+
+    def test_security_insights_shows_checks_when_present(self):
+        report = build_security_insights_section({
+            "security_insights": {
+                "has_security_insights": True,
+                "has_security_md": False,
+                "has_github_security_md": True,
+            }
+        })
+        self.assertIn("SECURITY-INSIGHTS.yml/yaml", report)
+        self.assertIn(".github/SECURITY.md", report)
+        self.assertIn("Present", report)
+        self.assertNotIn("Add a SECURITY.md file", report)
+
+    def test_osv_no_vulnerabilities_message(self):
+        report = build_vulnerabilities_section({"osv_vulnerabilities": {"vulns": []}})
+        self.assertIn("No known vulnerabilities found", report)
+        self.assertIn("clean vulnerability record", report)
+
+    def test_osv_raw_api_errors_are_hidden(self):
+        report = build_vulnerabilities_section({
+            "osv_vulnerabilities": {
+                "available": False,
+                "vulns": [],
+                "error": '{"code":3,"message":"Invalid query."}',
+            }
+        })
+        self.assertIn("OSV scan could not be completed", report)
+        self.assertIn("try again later", report)
+        self.assertNotIn("Invalid query", report)
+        self.assertNotIn('"code"', report)
+
+    def test_osv_vulnerability_lists_id_severity_and_summary(self):
+        report = build_vulnerabilities_section({
+            "osv_vulnerabilities": {
+                "available": True,
+                "vulns": [{
+                    "id": "GHSA-test",
+                    "aliases": ["CVE-2026-1234"],
+                    "summary": "Example vulnerability",
+                    "severity": [{"type": "CVSS_V3", "score": "CVSS:3.1/AV:N"}],
+                }],
+            }
+        })
+        self.assertIn("CVE-2026-1234", report)
+        self.assertIn("CVSS_V3", report)
+        self.assertIn("Example vulnerability", report)

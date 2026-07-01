@@ -75,6 +75,171 @@ def _get(path: str, params: dict | None = None) -> Any:
     return response.json()
 
 
+def fetch_openssf_scorecard(owner: str, repo: str) -> dict[str, Any]:
+    """Fetch OpenSSF Scorecard data without failing the main repo analysis."""
+    url = f"https://api.scorecard.dev/projects/github.com/{owner}/{repo}"
+    try:
+        response = _session().get(url, timeout=20)
+    except requests.RequestException as exc:
+        return {"available": False, "error": str(exc)}
+
+    if response.status_code == 404:
+        return {"available": False, "status_code": 404}
+    if not response.ok:
+        return {
+            "available": False,
+            "status_code": response.status_code,
+            "error": response.text[:200],
+        }
+    try:
+        data = response.json()
+    except ValueError as exc:
+        return {"available": False, "error": f"Invalid Scorecard response: {exc}"}
+    if isinstance(data, dict):
+        data["available"] = True
+        return data
+    return {"available": False, "error": "Unexpected Scorecard response format."}
+
+
+def fetch_osv_vulnerabilities(owner: str, repo: str) -> dict[str, Any]:
+    """Fetch known OSV vulnerabilities without failing the main repo analysis."""
+    repo_url = f"https://github.com/{owner}/{repo}"
+    try:
+        response = _session().post(
+            "https://api.osv.dev/v1/query",
+            json={"url": repo_url},
+            headers={"Content-Type": "application/json"},
+            timeout=15,
+        )
+    except requests.RequestException as exc:
+        return {"vulns": [], "available": False, "error": "OSV scan could not be completed."}
+
+    if response.status_code == 404:
+        return {"vulns": [], "available": True}
+    if not response.ok:
+        return {
+            "vulns": [],
+            "available": False,
+            "status_code": response.status_code,
+            "error": "OSV scan could not be completed.",
+        }
+    try:
+        data = response.json()
+    except ValueError as exc:
+        return {"vulns": [], "available": False, "error": "OSV scan could not be completed."}
+    if isinstance(data, dict):
+        data.setdefault("vulns", [])
+        data["available"] = True
+        return data
+    return {"vulns": [], "available": False, "error": "OSV scan could not be completed."}
+
+
+def _normalize_best_practices_level(project: dict[str, Any]) -> str:
+    for field in (
+        "badge_level",
+        "tiered_badge_level",
+        "level",
+        "badge",
+        "status",
+    ):
+        value = project.get(field)
+        if value:
+            text = str(value).strip().lower()
+            if text in {"passing", "silver", "gold"}:
+                return text
+            if "gold" in text:
+                return "gold"
+            if "silver" in text:
+                return "silver"
+            if "passing" in text or "pass" in text:
+                return "passing"
+
+    numeric_fields = ("badge_percentage_100", "badge_percentage_0", "percentage")
+    for field in numeric_fields:
+        value = project.get(field)
+        try:
+            percentage = float(value)
+        except (TypeError, ValueError):
+            continue
+        if percentage >= 100:
+            return "gold"
+        if percentage >= 90:
+            return "silver"
+        if percentage >= 66:
+            return "passing"
+    return ""
+
+
+def fetch_best_practices_badge(owner: str, repo: str) -> dict[str, Any]:
+    """Fetch OpenSSF Best Practices badge status without failing analysis."""
+    repo_url = f"https://github.com/{owner}/{repo}"
+    query = f"github.com/{owner}/{repo}"
+    try:
+        response = _session().get(
+            "https://www.bestpractices.dev/projects.json",
+            params={"url": repo_url},
+            timeout=20,
+        )
+    except requests.RequestException as exc:
+        return {"available": False, "found": False, "error": str(exc)}
+
+    if not response.ok:
+        return {
+            "available": False,
+            "found": False,
+            "status_code": response.status_code,
+            "error": response.text[:200],
+        }
+    try:
+        data = response.json()
+    except ValueError as exc:
+        return {"available": False, "found": False, "error": f"Invalid Best Practices response: {exc}"}
+
+    projects = data if isinstance(data, list) else data.get("projects", []) if isinstance(data, dict) else []
+    if not isinstance(projects, list):
+        return {"available": False, "found": False, "error": "Unexpected Best Practices response format."}
+
+    needle = query.lower()
+    for index, project in enumerate(projects):
+        if not isinstance(project, dict):
+            continue
+        project_text = " ".join(
+            str(project.get(field) or "")
+            for field in ("repo_url", "repository", "homepage_url", "url", "html_url", "name")
+        ).lower()
+        if needle not in project_text and not (index == 0 and len(projects) == 1):
+            continue
+        level = _normalize_best_practices_level(project)
+        return {
+            "available": True,
+            "found": bool(level),
+            "level": level,
+            "project": project,
+        }
+    return {"available": True, "found": False, "level": ""}
+
+
+def fetch_security_insights(owner: str, repo: str, files: list[dict]) -> dict[str, bool]:
+    """Detect OpenSSF Security Insights and vulnerability reporting files."""
+    root_names = {item.get("name", "").lower() for item in files}
+    has_security_insights = any(
+        name in root_names
+        for name in ("security-insights.yml", "security-insights.yaml")
+    )
+    has_security_md = "security.md" in root_names
+    has_github_security_md = False
+    try:
+        _get(f"/repos/{owner}/{repo}/contents/.github/SECURITY.md")
+        has_github_security_md = True
+    except GitHubAPIError:
+        has_github_security_md = False
+    return {
+        "has_security_insights": has_security_insights,
+        "has_security_md": has_security_md,
+        "has_github_security_md": has_github_security_md,
+    }
+
+
 def _search_total_count(query: str) -> int | None:
     try:
         data = _get("/search/issues", {"q": query, "per_page": 1, "page": 1})
@@ -174,10 +339,14 @@ def fetch_repo_snapshot(repo_url: str) -> dict[str, Any]:
         {"state": "open", "per_page": API_PAGE_SIZE, "page": 1},
     )
     branches_raw = _get(f"{base}/branches", {"per_page": API_PAGE_SIZE, "page": 1})
+    openssf_scorecard = fetch_openssf_scorecard(owner, repo)
+    osv_vulnerabilities = fetch_osv_vulnerabilities(owner, repo)
+    best_practices_badge = fetch_best_practices_badge(owner, repo)
     open_issues_total = _search_total_count(f"repo:{owner}/{repo} is:issue is:open")
     open_prs_total = _search_total_count(f"repo:{owner}/{repo} is:pr is:open")
 
     files = _enrich_root_items(base, contents) if isinstance(contents, list) else []
+    security_insights = fetch_security_insights(owner, repo, files)
     issue_base = f"https://github.com/{owner}/{repo}/issues"
     pr_base = f"https://github.com/{owner}/{repo}/pull"
     issues = [
@@ -258,6 +427,10 @@ def fetch_repo_snapshot(repo_url: str) -> dict[str, Any]:
         "issues": issues,
         "pull_requests": pull_requests,
         "branches": branches,
+        "openssf_scorecard": openssf_scorecard,
+        "osv_vulnerabilities": osv_vulnerabilities,
+        "best_practices_badge": best_practices_badge,
+        "security_insights": security_insights,
         "stats": {
             "open_issues_total": open_issues_total if open_issues_total is not None else len(issues),
             "open_prs_total": open_prs_total if open_prs_total is not None else len(pull_requests),

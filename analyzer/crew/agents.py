@@ -2,12 +2,7 @@ import os
 
 from crewai import Agent, LLM
 
-from analyzer.tools import (
-    get_repo_branches,
-    get_repo_issues,
-    get_repo_pull_requests,
-    get_repo_structure,
-)
+from analyzer.tools import get_repo_structure
 
 
 def _llm() -> LLM:
@@ -34,45 +29,14 @@ def structure_agent() -> Agent:
     )
 
 
-def issue_agent() -> Agent:
+def security_agent() -> Agent:
     return Agent(
-        role="Issue Triage Analyst",
-        goal="List every open issue grouped by labels with authors and links.",
+        role="Security Posture Analyst",
+        goal="Write a plain-English security summary for developers",
         backstory=(
-            "QA lead who writes release notes. You include every issue number, "
-            "title, author, and label group — nothing is omitted."
+            "Senior security engineer who explains complex security signals clearly to developers of all levels. "
+            "You never use jargon without explaining it."
         ),
-        tools=[get_repo_issues],
-        llm=_llm(),
-        cache=False,
-        verbose=False,
-    )
-
-
-def pull_request_agent() -> Agent:
-    return Agent(
-        role="Pull Request Reviewer",
-        goal="Document each open PR with author, branches, URL, and intent.",
-        backstory=(
-            "Staff engineer who writes detailed code review summaries. "
-            "You analyze every PR individually with branch flow and purpose."
-        ),
-        tools=[get_repo_pull_requests],
-        llm=_llm(),
-        cache=False,
-        verbose=False,
-    )
-
-
-def branch_agent() -> Agent:
-    return Agent(
-        role="Branch Workflow Specialist",
-        goal="Classify every branch and recommend git workflow improvements.",
-        backstory=(
-            "DevOps engineer who audits branch sprawl. "
-            "You name every branch and explain main vs feature vs release vs protected."
-        ),
-        tools=[get_repo_branches],
         llm=_llm(),
         cache=False,
         verbose=False,

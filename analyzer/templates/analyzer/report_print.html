@@ -34,14 +34,11 @@
             page-break-inside: avoid;
         }
 
-        .cover-copy,
-        .score-card {
+        .cover-copy {
             display: table-cell;
             vertical-align: middle;
+            width: 100%;
         }
-
-        .cover-copy { width: 72%; }
-        .score-card { width: 28%; text-align: right; }
 
         .brand {
             font-size: 10px;
@@ -69,32 +66,6 @@
         .cover-sub {
             font-size: 11px;
             color: #c4b5fd;
-        }
-
-        .score-badge {
-            display: inline-block;
-            min-width: 112px;
-            padding: 18px 14px 15px;
-            border-radius: 8px;
-            background: {{ health_color }};
-            text-align: center;
-            color: #ffffff;
-            border: 2px solid rgba(255,255,255,0.65);
-        }
-
-        .score-badge-number {
-            font-size: 28px;
-            font-weight: 800;
-            line-height: 1;
-        }
-
-        .score-badge-label {
-            font-size: 8px;
-            margin-top: 7px;
-            color: #ffffff;
-            text-transform: uppercase;
-            letter-spacing: 0.6px;
-            font-weight: 700;
         }
 
         .meta-table {
@@ -125,26 +96,6 @@
             font-weight: bold;
             color: #1e293b;
             word-break: break-all;
-        }
-
-        .health-label {
-            font-size: 10px;
-            color: #64748b;
-        }
-
-        .health-bar {
-            width: 100%;
-            height: 7px;
-            border-radius: 999px;
-            background: #e2e8f0;
-            overflow: hidden;
-            margin: 6px 0 4px;
-        }
-
-        .health-bar-fill {
-            height: 7px;
-            border-radius: 999px;
-            background: {{ health_color }};
         }
 
         .summary-grid {
@@ -204,29 +155,6 @@
             font-weight: 800;
             color: #1e293b;
             margin-bottom: 9px;
-        }
-
-        .assessment-health {
-            margin-bottom: 9px;
-        }
-
-        .assessment-health strong {
-            display: block;
-            color: {{ health_color }};
-            font-size: 25px;
-            line-height: 1;
-        }
-
-        .assessment-health span {
-            display: inline-block;
-            margin-top: 5px;
-            padding: 2px 7px;
-            background: {{ health_color }};
-            color: #ffffff;
-            border-radius: 999px;
-            font-size: 8px;
-            font-weight: 700;
-            text-transform: uppercase;
         }
 
         .assessment-stat,
@@ -470,10 +398,11 @@
         }
 
         .report-prose pre {
-            background: #f8fafc;
-            color: #334155;
-            border: 1px solid #e2e8f0;
-            padding: 8px;
+            background: #0f172a;
+            color: #e5f0ff;
+            border: 1px solid #263449;
+            border-radius: 6px;
+            padding: 10px;
             margin: 8px 0;
             font-size: 10px;
             white-space: pre-wrap;
@@ -506,6 +435,240 @@
         .report-prose td {
             padding: 6px 8px;
             border: 1px solid #e2e8f0;
+        }
+
+        .overview-card {
+            padding: 10px 12px;
+            border: 1px solid #bfdbfe;
+            border-left: 5px solid #2563eb;
+            border-radius: 7px;
+            background: #eff6ff;
+            margin: 6px 0 10px;
+        }
+
+        .overview-card-muted {
+            border-color: #e2e8f0;
+            border-left-color: #94a3b8;
+            background: #f8fafc;
+        }
+
+        .security-summary,
+        .security-intro {
+            padding: 9px 10px;
+            border: 1px solid #c7d2fe;
+            border-left: 4px solid #6366f1;
+            border-radius: 7px;
+            background: #eef2ff;
+            margin: 6px 0 10px;
+        }
+
+        .security-summary strong,
+        .security-intro strong {
+            display: block;
+            color: #1e293b;
+            font-size: 10px;
+            margin-bottom: 3px;
+        }
+
+        .security-summary p,
+        .security-intro p {
+            color: #475569;
+            margin: 0;
+            font-size: 8px;
+            line-height: 1.45;
+        }
+
+        .tech-stack-grid,
+        .repo-stat-grid,
+        .security-card-grid,
+        .scorecard-check-grid {
+            font-size: 0;
+            margin: 6px 0 12px;
+        }
+
+        .tech-pill,
+        .repo-stat-card,
+        .security-card,
+        .scorecard-check,
+        .vuln-card {
+            display: inline-block;
+            width: 48.5%;
+            margin: 0 1.5% 7px 0;
+            padding: 8px;
+            vertical-align: top;
+            border: 1px solid #e2e8f0;
+            border-left: 4px solid #94a3b8;
+            border-radius: 7px;
+            background: #ffffff;
+            font-size: 9px;
+        }
+
+        .tech-pill strong,
+        .repo-stat-card strong,
+        .security-card strong,
+        .scorecard-check strong,
+        .vuln-card strong {
+            display: block;
+            color: #0f172a;
+            font-weight: 800;
+        }
+
+        .tech-pill span,
+        .security-card p,
+        .scorecard-check p,
+        .vuln-card p {
+            display: block;
+            margin-top: 3px;
+            color: #64748b;
+            font-size: 8px;
+            line-height: 1.45;
+        }
+
+        .repo-stat-card span {
+            display: block;
+            color: #64748b;
+            font-size: 7px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+            margin-bottom: 3px;
+        }
+
+        .repo-stat-good,
+        .security-card-good,
+        .scorecard-check-good {
+            border-left-color: #10b981;
+            background: #f0fdf4;
+        }
+
+        .repo-stat-warn,
+        .security-card-warn,
+        .scorecard-check-warn {
+            border-left-color: #f59e0b;
+            background: #fffbeb;
+        }
+
+        .security-card-bad,
+        .scorecard-check-bad {
+            border-left-color: #ef4444;
+            background: #fff1f2;
+        }
+
+        .security-card-neutral,
+        .scorecard-check-neutral {
+            border-left-color: #64748b;
+            background: #f8fafc;
+        }
+
+        .scorecard-hero {
+            display: table;
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #c7d2fe;
+            border-radius: 8px;
+            background: #eef2ff;
+            margin: 6px 0 10px;
+        }
+
+        .scorecard-score {
+            display: table-cell;
+            width: 78px;
+            height: 78px;
+            border: 7px solid #6366f1;
+            border-radius: 999px;
+            text-align: center;
+            vertical-align: middle;
+            background: #ffffff;
+            color: #3730a3;
+        }
+
+        .scorecard-score strong {
+            font-size: 22px;
+        }
+
+        .scorecard-hero > div:last-child {
+            display: table-cell;
+            padding-left: 12px;
+            vertical-align: middle;
+        }
+
+        .security-status {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 999px;
+            font-size: 7px;
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+            margin-bottom: 5px;
+        }
+
+        .security-status-good { background: #d1fae5; color: #047857; }
+        .security-status-warn { background: #fef3c7; color: #b45309; }
+        .security-status-bad { background: #ffe4e6; color: #be123c; }
+        .security-status-neutral { background: #e2e8f0; color: #475569; }
+
+        .scorecard-check small {
+            display: block;
+            margin-top: 2px;
+            color: #475569;
+            font-weight: 800;
+        }
+
+        .badge-showcase {
+            display: table;
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            background: #ffffff;
+            margin: 6px 0 10px;
+        }
+
+        .badge-medal {
+            display: table-cell;
+            width: 82px;
+            height: 70px;
+            text-align: center;
+            vertical-align: middle;
+            color: #111827;
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-size: 9px;
+            border-radius: 14px;
+        }
+
+        .badge-showcase > div:last-child {
+            display: table-cell;
+            padding-left: 12px;
+            vertical-align: middle;
+        }
+
+        .badge-gold { background: #f59e0b; }
+        .badge-silver { background: #cbd5e1; }
+        .badge-passing { background: #22c55e; color: #052e16; }
+
+        .recommendation-banner {
+            padding: 8px 10px;
+            border: 1px solid #fcd34d;
+            border-left: 4px solid #f59e0b;
+            border-radius: 7px;
+            background: #fffbeb;
+            color: #78350f;
+            font-weight: 700;
+            margin: 6px 0 10px;
+        }
+
+        .vuln-list {
+            margin: 6px 0 12px;
+        }
+
+        .vuln-card span {
+            display: inline-block;
+            margin-top: 3px;
+            color: #be123c;
+            font-weight: 800;
         }
 
         .footer {
@@ -560,15 +723,9 @@
     <div class="cover">
         <div class="cover-copy">
             <div class="brand">REPOFLOW</div>
-            <div class="cover-kicker">GitHub Repository Analysis Report</div>
+            <div class="cover-kicker">Security & Development Analysis Report</div>
             <h1>{{ repo_display }}</h1>
             <p class="cover-sub">Generated {{ generated_at }}</p>
-        </div>
-        <div class="score-card">
-            <div class="score-badge">
-                <div class="score-badge-number">{{ health_score }}/100</div>
-                <div class="score-badge-label">{{ health_label }}</div>
-            </div>
         </div>
     </div>
 
@@ -579,10 +736,8 @@
                 <div class="meta-value">{{ repo_display }}</div>
             </td>
             <td>
-                <div class="meta-label">Health Score</div>
-                <div class="meta-value" style="color: {{ health_color }}; font-size: 18px;">{{ health_score }}/100</div>
-                <div class="health-bar"><div class="health-bar-fill" style="width: {{ health_score }}%;"></div></div>
-                <div class="health-label">{{ health_label }}</div>
+                <div class="meta-label">Report Focus</div>
+                <div class="meta-value">OpenSSF Security</div>
             </td>
             <td>
                 <div class="meta-label">Source URL</div>
@@ -594,18 +749,18 @@
     <table class="summary-grid">
         <tr>
             <td>
-                <div class="summary-value">{{ pdf_summary.issues_total }}</div>
-                <div class="summary-text">Open issues</div>
+                <div class="summary-value">{{ pdf_summary.scorecard_status }}</div>
+                <div class="summary-text">OpenSSF Scorecard</div>
             </td>
             <td>
-                <div class="summary-value">{{ pdf_summary.issues_sampled }}</div>
-                <div class="summary-text">Issues sampled</div>
+                <div class="summary-value">{{ pdf_summary.best_practices_level }}</div>
+                <div class="summary-text">Best Practices badge</div>
             </td>
         </tr>
         <tr>
             <td>
-                <div class="summary-value">{{ pdf_summary.prs_total }}</div>
-                <div class="summary-text">Open PRs</div>
+                <div class="summary-value">{{ pdf_summary.osv_vulnerability_count }}</div>
+                <div class="summary-text">OSV vulnerabilities</div>
             </td>
             <td>
                 <div class="summary-value">{{ pdf_summary.branches_sampled }}</div>

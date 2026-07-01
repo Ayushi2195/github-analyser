@@ -1,22 +1,23 @@
 """
-CrewAI workflow: LLM for structure; deterministic sections for issues/PRs/branches.
+CrewAI workflow: LLM for structure; deterministic security and development sections.
 """
 from __future__ import annotations
 
 from crewai import Crew, Process
 
 from analyzer.github_api import clear_snapshot_cache, fetch_repo_snapshot
-from analyzer.health import compute_health_score
 from analyzer.report_builder import (
     build_branch_snapshot,
     build_branches_section,
-    build_executive_summary,
-    build_issues_section,
-    build_pull_requests_section,
+    build_good_first_issues_section,
+    build_recommendations_section,
+    build_security_section,
+    build_security_insights_section,
     build_structure_section,
+    build_vulnerabilities_section,
 )
 
-from .tasks import structure_task
+from .tasks import security_task, structure_task
 
 
 def _task_output(task) -> str:
@@ -25,82 +26,43 @@ def _task_output(task) -> str:
     return "_No output generated._"
 
 
-def _health_section(snapshot: dict, health: dict) -> str:
-    meta = snapshot.get("meta", {})
-    stats = snapshot.get("stats", {})
-    notes = "\n".join(f"- {note}" for note in health["notes"])
-    score_lines = "\n".join(
-        f"- **{'+' if item.get('change', 0) > 0 else ''}{item.get('change', 0)} points — "
-        f"{item['criterion']}:** {item['result']}"
-        for item in health.get("breakdown", [])
-    )
-    description = meta.get("description") or "No repository description was provided on GitHub."
-    return (
-        f"**Score:** {health['score']}/100 ({health['label']})\n\n"
-        f"**Repository context:** {description} The project primarily uses "
-        f"**{meta.get('language') or 'an unspecified language'}**, has "
-        f"**{meta.get('stars') or 0} stars** and **{meta.get('forks') or 0} forks**, "
-        f"and develops on **{meta.get('default_branch') or 'an unknown default branch'}**. "
-        f"GitHub currently reports **{stats.get('open_issues_total', len(snapshot.get('issues', [])))} open issues** "
-        f"and **{stats.get('open_prs_total', len(snapshot.get('pull_requests', [])))} open PRs**.\n\n"
-        f"### Signals\n\n{notes}\n\n"
-        f"### How This Score Is Calculated\n\n"
-        f"RepoFlow uses a transparent, rule-based score rather than asking the AI to guess. "
-        f"Every repository starts from a neutral **{health.get('baseline', 60)}-point baseline**. "
-        f"It rewards documentation, recent code pushes, CI/CD, contribution guidance, and fresh PRs. "
-        f"Issue load is normalized by stars, PR risk is based on age, and branch protection never causes a deduction.\n\n"
-        f"{score_lines}\n\n"
-        f"**Labels:** 80–100 = Healthy, 60–79 = Needs attention, below 60 = At risk. "
-        f"The score is a fast maintenance signal, not a judgment of code quality or security."
-    )
-
-
 def run_analysis_result(repo_url: str) -> dict:
     print(f"Analyzing: {repo_url}", flush=True)
     clear_snapshot_cache()
     snapshot = fetch_repo_snapshot(repo_url)
     full_name = snapshot["meta"].get("full_name", repo_url)
-    health = compute_health_score(snapshot)
 
     structure = structure_task(repo_url, snapshot)
+    security = security_task(repo_url, snapshot)
 
     print("Running structure agent...", flush=True)
     crew = Crew(
-        agents=[structure.agent],
-        tasks=[structure],
+        agents=[structure.agent, security.agent],
+        tasks=[structure, security],
         process=Process.sequential,
         cache=False,
         verbose=False,
     )
-    crew.kickoff() #runs the CrewAI workflow, but only for structure overview
+    crew.kickoff() #runs the CrewAI workflow for structure and plain-English security summary
     clear_snapshot_cache()
 
-    print("Running issues agent...", flush=True)
-    print("Running PR agent...", flush=True)
-    print("Running branch agent...", flush=True)
+    print("Building OpenSSF security analysis...", flush=True)
+    print("Building development insights...", flush=True)
     print("Generating report...", flush=True)
     ai_overview = _task_output(structure)
+    security_summary = _task_output(security)
     structure_md = build_structure_section(snapshot, ai_overview)
-    summary_md = build_executive_summary(snapshot, health)
-    health_md = _health_section(snapshot, health)
-    issues_md = build_issues_section(snapshot) #these are not LLM-generated here , they are built using deterministic python logic from GitHub API data.
-    prs_md = build_pull_requests_section(snapshot)
+    security_md = build_security_section(snapshot, security_summary)
+    vulnerabilities_md = build_vulnerabilities_section(snapshot)
+    security_insights_md = build_security_insights_section(snapshot)
     branch_snapshot_md = build_branch_snapshot(snapshot)
     branches_md = build_branches_section(snapshot)
+    good_first_issues_md = build_good_first_issues_section(snapshot)
+    recommendations_md = build_recommendations_section(snapshot)
 
-    markdown_report = f"""# 📊 GitHub Repository Analysis Report
+    markdown_report = f"""# 📊 RepoFlow Security & Development Report
 
 **Repository:** [{full_name}]({repo_url})
-
----
-
-<h2 class="report-heading report-heading-green">🏥 Repository Health</h2>
-
-{health_md}
-
----
-
-{summary_md}
 
 ---
 
@@ -108,35 +70,64 @@ def run_analysis_result(repo_url: str) -> dict:
 
 ---
 
-<h2 class="report-heading report-heading-yellow">🐛 Open Issues</h2>
+<h2 class="report-heading report-heading-yellow">🛡 OpenSSF Security Analysis</h2>
 
-{issues_md}
-
----
-
-<h2 class="report-heading report-heading-yellow">🔀 Pull Requests</h2>
-
-{prs_md}
+{security_md}
 
 ---
 
-<h2 class="report-heading report-heading-yellow">🌿 Branch Analysis</h2>
+{vulnerabilities_md}
+
+---
+
+{security_insights_md}
+
+---
+
+<h2 class="report-heading report-heading-yellow">🌿 Development Insights</h2>
+
+---
 
 {branch_snapshot_md}
 
 {branches_md}
+
+---
+
+{good_first_issues_md}
+
+---
+
+{recommendations_md}
 """
+
+    security_signal_count = 0
+    if (snapshot.get("openssf_scorecard") or {}).get("available"):
+        security_signal_count += 1
+    if (snapshot.get("best_practices_badge") or {}).get("found"):
+        security_signal_count += 1
+    if (snapshot.get("osv_vulnerabilities") or {}).get("available", True):
+        security_signal_count += 1
+    if any((snapshot.get("security_insights") or {}).values()):
+        security_signal_count += 1
+
+    security_summary = {
+        "score": security_signal_count * 25,
+        "label": f"{security_signal_count}/4 security signals present",
+        "notes": [],
+    }
 
     return {
         "markdown": markdown_report,
         "snapshot": snapshot,
-        "health": health,
+        "health": security_summary,
         "sections": {
-            "health": health_md,
-            "summary": summary_md,
+            "security": security_md,
+            "vulnerabilities": vulnerabilities_md,
+            "security_insights": security_insights_md,
             "structure": structure_md,
-            "issues": issues_md,
-            "pull_requests": prs_md,
+            "good_first_issues": good_first_issues_md,
+            "recommendations": recommendations_md,
             "branch_snapshot": branch_snapshot_md,
             "branches": branches_md,
             "branch_count": len(snapshot.get("branches", [])),

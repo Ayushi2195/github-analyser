@@ -2,13 +2,7 @@ import json
 
 from crewai import Task
 
-from analyzer.report_format import (
-    BRANCHES_FORMAT,
-    ISSUES_FORMAT,
-    PRS_FORMAT,
-)
-
-from .agents import branch_agent, issue_agent, pull_request_agent, structure_agent
+from .agents import security_agent, structure_agent
 
 
 def structure_task(repo_url: str, snapshot: dict) -> Task:
@@ -33,62 +27,29 @@ def structure_task(repo_url: str, snapshot: dict) -> Task:
     )
 
 
-def issues_task(repo_url: str, snapshot: dict) -> Task:
-    issues_str = json.dumps(snapshot["issues"], indent=2)
-    count = len(snapshot["issues"])
-    stats_str = json.dumps(snapshot.get("stats", {}), indent=2)
+def security_task(repo_url: str, snapshot: dict) -> Task:
+    scorecard = snapshot.get("openssf_scorecard") or {}
+    top_checks = sorted(scorecard.get("checks") or [], key=lambda item: item.get("score", 0), reverse=True)[:3]
+    payload = {
+        "scorecard": {
+            "available": bool(scorecard.get("available")),
+            "score": scorecard.get("score"),
+            "checks": top_checks,
+        },
+        "osv_vulnerabilities": snapshot.get("osv_vulnerabilities") or {},
+        "best_practices_badge": snapshot.get("best_practices_badge") or {},
+        "security_insights": snapshot.get("security_insights") or {},
+    }
+    payload_json = json.dumps(payload, indent=2)
     return Task(
         description=(
-            f"Analyze open issues for: {repo_url}\n\n"
-            f"GitHub API stats:\n{stats_str}\n\n"
-            f"You have been given EXACTLY these {count} sampled issues from the GitHub API:\n{issues_str}\n\n"
-            f"{ISSUES_FORMAT}\n\n"
-            "You MUST reference specific issue numbers, titles, and authors. "
-            "NEVER make general statements. If data is missing, say 'Data unavailable'."
+            f"Write a plain-English security summary for: {repo_url}\n\n"
+            f"You are given these OpenSSF-related results as JSON:\n{payload_json}\n\n"
+            "Write exactly 4-5 sentences in English only. No bullet points, no headings, no markdown lists. "
+            "Explain the overall security posture, the biggest strength, the biggest gap, and one specific actionable recommendation "
+            "for the maintainer. Do not repeat raw API field names unless you briefly explain them. "
+            "Do not mention that you are an AI."
         ),
-        expected_output="Detailed Markdown Open Issues Report grouped by labels.",
-        agent=issue_agent(),
-    )
-
-
-def pull_requests_task(repo_url: str, snapshot: dict) -> Task:
-    prs_str = json.dumps(snapshot["pull_requests"], indent=2)
-    count = len(snapshot["pull_requests"])
-    stats_str = json.dumps(snapshot.get("stats", {}), indent=2)
-    return Task(
-        description=(
-            f"Analyze pull requests for: {repo_url}\n\n"
-            f"GitHub API stats:\n{stats_str}\n\n"
-            f"You have been given EXACTLY these {count} sampled pull requests from the GitHub API:\n{prs_str}\n\n"
-            f"{PRS_FORMAT}\n\n"
-            "Use real PR numbers, authors, branch names, and URLs from the data. "
-            "NEVER make general statements. If data is missing, say 'Data unavailable'."
-        ),
-        expected_output="Detailed Markdown Pull Request Analysis Report.",
-        agent=pull_request_agent(),
-    )
-
-
-def branches_task(repo_url: str, snapshot: dict) -> Task:
-    branches_str = json.dumps(snapshot["branches"], indent=2)
-    default_branch = snapshot["meta"].get("default_branch", "main")
-    stats_str = json.dumps(snapshot.get("stats", {}), indent=2)
-    return Task(
-        description=(
-            f"Analyze branches for: {repo_url}\n\n"
-            f"Default branch: {default_branch}\n\n"
-            f"GitHub API stats:\n{stats_str}\n\n"
-            f"You have been given EXACTLY these sampled branches from the GitHub API:\n{branches_str}\n\n"
-            f"{BRANCHES_FORMAT}\n\n"
-            "Classify every sampled branch. Use exact branch names from the data. "
-            "For each interesting branch, write a one-line interpretation instead of saying "
-            "'Branch name indicates X'. Examples: feat_config_files means "
-            "'Feature work: configuration file improvements, not yet merged'; mcp means "
-            "'Likely MCP (Model Context Protocol) integration work in progress'; query-sets means "
-            "'Feature branch for query set functionality'. If a branch has 0 open PRs targeting it, "
-            "add '(stale - no active PR)'. If it has PRs, add '(active - N open PRs targeting it)'. "
-            "NEVER make general statements. If data is missing, say 'Data unavailable'."
-        ),
-        expected_output="Detailed Markdown branch analysis with all sections.",
-        agent=branch_agent(),
+        expected_output="Exactly 4-5 sentences of plain-English security summary in English only.",
+        agent=security_agent(),
     )

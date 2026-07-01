@@ -156,89 +156,228 @@ def _purpose_for_item(item: dict) -> str:
     return "Supporting root item. RepoFlow has insufficient content evidence to claim a more specific purpose."
 
 
+TREE_COMMENT_OVERRIDES = {
+    "api": "FastAPI Backend",
+    "agents": "AI agent implementations",
+    "auth": "Authentication and user management",
+    "routes": "API endpoints",
+    "loaders": "Data loaders and connectors",
+    "app": "Frontend or application source",
+    "src": "Main source code",
+    "components": "UI components",
+    "contexts": "State management",
+    "services": "API client implementations",
+    "lib": "Reusable library code",
+    "core": "Core application logic",
+    "backend": "Backend implementation",
+    "frontend": "Frontend implementation",
+    "tests": "Unit and integration tests",
+    "test": "Automated tests",
+    "docs": "Documentation",
+    ".github": "GitHub workflows and community files",
+    "readme.md": "Project overview and setup instructions",
+    "contributing.md": "Contribution rules for new developers",
+    "security.md": "Security vulnerability reporting policy",
+    "package.json": "Node.js scripts and dependencies",
+    "pyproject.toml": "Python project metadata and dependencies",
+    "requirements.txt": "Python dependency list",
+    "go.mod": "Go module definition",
+    "cargo.toml": "Rust crate metadata",
+    "dockerfile": "Container build instructions",
+    "app_factory.py": "Application initialization",
+    "config.py": "Configuration",
+    "index.py": "Server entry point",
+    "main.py": "Application entry point",
+    "client.py": "Client implementation",
+    "connection.py": "Connection management",
+    "models.py": "Data models",
+    "app.tsx": "Main frontend entry point",
+}
+
+
+def _tree_comment(name: str, item_type: str = "") -> str:
+    lower = name.lower()
+    if lower in TREE_COMMENT_OVERRIDES:
+        return TREE_COMMENT_OVERRIDES[lower]
+    return ""
+
+
+def _format_tree_line(prefix: str, connector: str, name: str, comment: str) -> str:
+    label = f"{prefix}{connector} {name}"
+    if not comment:
+        return label
+    return f"{label:<36} # {comment}"
+
+
+def _repository_tree(snapshot: dict[str, Any]) -> str:
+    meta = snapshot.get("meta", {})
+    repo_name = meta.get("full_name") or f"{snapshot.get('owner', '')}/{snapshot.get('repo', '')}".strip("/")
+    files = sorted(
+        snapshot.get("files", []),
+        key=lambda item: (item.get("type") != "dir", item.get("name", "").lower()),
+    )
+    selected = files[:18]
+    lines = [f"{repo_name}/"]
+    for index, item in enumerate(selected):
+        name = item.get("name", "")
+        if not name:
+            continue
+        is_last = index == len(selected) - 1
+        connector = "└──" if is_last else "├──"
+        display_name = f"{name}/" if item.get("type") == "dir" else name
+        lines.append(_format_tree_line("", connector, display_name, _tree_comment(name, item.get("type", ""))))
+        children = item.get("children") or []
+        if item.get("type") == "dir" and children:
+            child_prefix = "    " if is_last else "│   "
+            for child_index, child in enumerate(children[:5]):
+                child_is_last = child_index == min(len(children), 5) - 1
+                child_connector = "└──" if child_is_last else "├──"
+                child_display = f"{child}/" if "." not in child else child
+                lines.append(_format_tree_line(child_prefix, child_connector, child_display, _tree_comment(child)))
+            if len(children) > 5:
+                lines.append(f"{child_prefix}└── ... {len(children) - 5} more items")
+    if not selected:
+        lines.append("└── No root files were returned by the GitHub API")
+    return "\n".join(lines)
+
+
+def _has_root_file(snapshot: dict[str, Any], *names: str) -> bool:
+    available = {item.get("name", "").lower() for item in snapshot.get("files", [])}
+    return any(name.lower() in available for name in names)
+
+
+def _has_ci_config(snapshot: dict[str, Any]) -> bool:
+    files = _file_map(snapshot)
+    github = files.get(".github") or {}
+    children = {child.lower() for child in github.get("children") or []}
+    root_names = {item.get("name", "").lower() for item in snapshot.get("files", [])}
+    return (
+        "workflows" in children
+        or ".github/workflows" in root_names
+        or any(name in root_names for name in ("azure-pipelines.yml", ".travis.yml", "circle.yml", "jenkinsfile"))
+    )
+
+
+def _days_since(value: str | None) -> str:
+    parsed = _parse_github_date(value)
+    if not parsed:
+        return "Data unavailable"
+    days = max(0, (datetime.now(timezone.utc) - parsed).days)
+    if days == 0:
+        return "today"
+    if days == 1:
+        return "1 day ago"
+    return f"{days} days ago"
+
+
+def _stat_card(title: str, value: str, tone: str = "neutral") -> str:
+    return (
+        f'<div class="repo-stat-card repo-stat-{tone}">'
+        f'<span>{escape(title)}</span>'
+        f'<strong>{escape(value)}</strong>'
+        '</div>'
+    )
+
+
+def _repository_statistics(snapshot: dict[str, Any]) -> str:
+    meta = snapshot.get("meta", {})
+    stats = snapshot.get("stats", {})
+    branches = snapshot.get("branches", [])
+    protected_count = sum(1 for branch in branches if branch.get("protected"))
+    branch_count = stats.get("branches_sampled", len(branches))
+    cards = [
+        _stat_card(
+            "Repository purpose",
+            "Documented" if meta.get("description") else "No description",
+            "good" if meta.get("description") else "warn",
+        ),
+        _stat_card(
+            "Root README",
+            "Available" if _has_root_file(snapshot, "README.md") else "Missing",
+            "good" if _has_root_file(snapshot, "README.md") else "warn",
+        ),
+        _stat_card(
+            "License",
+            f"Detected: {meta.get('license')}" if meta.get("license") else "Not detected",
+            "good" if meta.get("license") else "warn",
+        ),
+        _stat_card(
+            "CONTRIBUTING.md",
+            "Available" if _has_root_file(snapshot, "CONTRIBUTING.md") else "Not detected",
+            "good" if _has_root_file(snapshot, "CONTRIBUTING.md") else "warn",
+        ),
+        _stat_card(
+            "CI/CD",
+            "Configuration detected" if _has_ci_config(snapshot) else "Not detected",
+            "good" if _has_ci_config(snapshot) else "warn",
+        ),
+        _stat_card("Last code push", _days_since(meta.get("pushed_at") or meta.get("updated_at"))),
+        _stat_card("Open issues", str(stats.get("open_issues_total", len(snapshot.get("issues", []))))),
+        _stat_card("Open PRs", str(stats.get("open_prs_total", len(snapshot.get("pull_requests", []))))),
+        _stat_card(
+            "Branches",
+            f"{branch_count} sampled; review cleanup" if branch_count >= 30 else f"{branch_count} sampled",
+            "warn" if branch_count >= 30 else "neutral",
+        ),
+        _stat_card(
+            "Protected branches",
+            f"{protected_count} detected" if protected_count else "None detected",
+            "good" if protected_count else "warn",
+        ),
+    ]
+    return "\n".join([
+        '<div class="repo-stat-grid">',
+        *cards,
+        '</div>',
+    ])
+
+
 def build_structure_section(snapshot: dict[str, Any], ai_overview: str = "") -> str:
     meta = snapshot.get("meta", {})
     files = snapshot.get("files", [])
-    file_names = {item.get("name", "").lower() for item in files}
     technologies = _detected_technologies(snapshot)
+    repo_display = meta.get("full_name") or snapshot.get("repo") or "This repository"
     overview = (
-        f"**{meta.get('full_name') or snapshot.get('repo')}** is described by its maintainers as: "
-        f"{meta.get('description') or 'No GitHub description was provided.'} "
-        f"The default branch is `{meta.get('default_branch') or 'unknown'}`."
+        f"<strong>{escape(str(repo_display))}</strong> is described by its maintainers as: "
+        f"{escape(str(meta.get('description') or 'No GitHub description was provided.'))} "
+        f"The default branch is <code>{escape(str(meta.get('default_branch') or 'unknown'))}</code>."
     )
     clean_ai = ai_overview.strip()
     if re.search(r"[\u3400-\u9fff]", clean_ai) or any(term in clean_ai.lower() for term in (" likely ", " probably ", " may be ")):
         clean_ai = ""
 
-    lines = ['<h2 class="report-heading report-heading-green">Repository Structure Analysis</h2>', "", "### What This Project Is", "", overview]
+    lines = [
+        '<h2 class="report-heading report-heading-green">Repository Overview</h2>',
+        "",
+        "### What This Project Is",
+        "",
+        f'<div class="overview-card">{overview}</div>',
+    ]
     if clean_ai:
-        lines.extend(["", clean_ai])
+        lines.extend(["", f'<div class="overview-card overview-card-muted">{escape(clean_ai)}</div>'])
+
+    lines.extend([
+        "",
+        "### Structure",
+        "",
+        "```text",
+        _repository_tree(snapshot),
+        "```",
+    ])
 
     lines.extend(["", "### Verified Tech Stack", ""])
     if technologies:
-        lines.extend(f"- **{technology}:** {reason}." for technology, reason in technologies)
+        lines.append('<div class="tech-stack-grid">')
+        lines.extend(
+            f'<div class="tech-pill"><strong>{escape(technology)}</strong><span>{escape(reason)}.</span></div>'
+            for technology, reason in technologies
+        )
+        lines.append("</div>")
     else:
         lines.append("- **Not confidently detected:** inspect dependency manifests before assuming a framework or language.")
 
-    config_items = [item for item in files if item.get("name", "").lower() in CONFIG_PURPOSES]
-    if config_items:
-        lines.extend(["", "### Configuration Files (Not Technologies)", ""])
-        for item in config_items:
-            lines.append(f"- **`{item['name']}`:** {_purpose_for_item(item)}")
+    lines.extend(["", "### Repository Statistics", "", _repository_statistics(snapshot)])
 
-    priority_names = [
-        "readme.md", "contributing.md", "architecture.md", "concepts.md", "configuration.md",
-        "pyproject.toml", "package.json", "go.mod", "cargo.toml", "src", "app", "lib",
-        "core", "skills", "tests", "docs", ".github",
-    ]
-    selected = []
-    by_name = _file_map(snapshot)
-    for name in priority_names:
-        if name in by_name and by_name[name] not in selected:
-            selected.append(by_name[name])
-    selected = selected[:12]
-    lines.extend(["", "### Key Files and Folders: Why a Student Should Care", ""])
-    for item in selected:
-        lines.append(f"- **`{item['name']}` ({item.get('type', 'item')}):** {_purpose_for_item(item)}")
-    if not selected:
-        lines.append("- No high-confidence onboarding files were detected at the repository root.")
-
-    reading_order = []
-    for name in ("readme.md", "concepts.md", "architecture.md", "configuration.md", "contributing.md"):
-        if name in by_name:
-            reading_order.append(by_name[name]["name"])
-    implementation = next((by_name[name]["name"] for name in ("src", "app", "lib", "core", "skills") if name in by_name), None)
-    tests = next((by_name[name]["name"] for name in ("tests", "test") if name in by_name), None)
-    if implementation:
-        reading_order.append(implementation)
-    if tests:
-        reading_order.append(tests)
-    lines.extend(["", "### Suggested Reading Order", ""])
-    if reading_order:
-        for index, name in enumerate(reading_order[:6], start=1):
-            lines.append(f"{index}. **`{name}`** - {_purpose_for_item(by_name[name.lower()])}")
-    else:
-        lines.append("1. Start with the README, then locate the main source and test directories manually.")
-
-    lines.extend(["", "### Before You Contribute", ""])
-    if technologies:
-        lines.append("- Learn the basics of: " + ", ".join(technology for technology, _ in technologies[:5]) + ".")
-    if "tests" in file_names or "test" in file_names:
-        lines.append("- Read and run the test suite before changing implementation code.")
-    if "contributing.md" in file_names:
-        lines.append("- Follow `CONTRIBUTING.md` for setup, style, and pull-request rules.")
-    else:
-        lines.append("- No root `CONTRIBUTING.md` was detected; check `.github` or the README for contributor rules.")
-
-    lines.extend([
-        "", "### Repository Stats", "",
-        f"- **Stars:** {meta.get('stars') or 0}",
-        f"- **Forks:** {meta.get('forks') or 0}",
-        f"- **Default branch:** {meta.get('default_branch') or 'Data unavailable'}",
-        f"- **Primary language:** {meta.get('language') or 'Not specified'}",
-        f"- **License:** {meta.get('license') or 'Not specified'}",
-        f"- **Last updated:** {meta.get('updated_at') or 'Data unavailable'}",
-    ])
     return "\n".join(lines)
 
 
@@ -331,83 +470,430 @@ def _beginner_issue_candidates(issues: list[dict], limit: int = 3) -> list[dict]
     return [candidate for candidate in ranked if candidate["score"] >= 1][:limit]
 
 
-def build_executive_summary(snapshot: dict[str, Any], health: dict[str, Any]) -> str:
-    issues = snapshot.get("issues", [])
-    prs = snapshot.get("pull_requests", [])
+def build_recommendations_section(snapshot: dict[str, Any]) -> str:
+    scorecard = snapshot.get("openssf_scorecard") or {}
+    badge = snapshot.get("best_practices_badge") or {}
+    insights = snapshot.get("security_insights") or {}
+    vulns = (snapshot.get("osv_vulnerabilities") or {}).get("vulns") or []
     branches = snapshot.get("branches", [])
-    stats = snapshot.get("stats", {})
-    open_issues_total = stats.get("open_issues_total", len(issues))
-    open_prs_total = stats.get("open_prs_total", len(prs))
-    stale_count = _stale_issue_count(issues)
-    protected_count = sum(1 for branch in branches if branch.get("protected"))
-    candidates = _beginner_issue_candidates(issues)
-    health_score = health.get("score", 0)
-    health_label = health.get("label", "Unknown")
-    health_metrics = health.get("metrics", {})
-    health_tone = "assessment-health-good" if health_score > 75 else "assessment-health-warn" if health_score >= 50 else "assessment-health-bad"
-
-    findings = [
-        f"<div class=\"assessment-stat\"><strong>{stale_count}</strong><span>stale sampled issues over 90 days</span></div>",
-        f"<div class=\"assessment-stat\"><strong>{len(branches)}</strong><span>branches inspected</span></div>",
-        f"<div class=\"assessment-stat\"><strong>{health_metrics.get('issues_per_star', 0):.3f}</strong><span>open issues per star</span></div>",
-    ]
-    risks = []
-    if protected_count:
-        risks.append(f"<div class=\"assessment-line\">✓ {protected_count} protected branch(es) detected</div>")
-    issue_load_status = health_metrics.get("issue_load_status", "")
-    if issue_load_status in {"elevated relative to community size", "high relative to community size"}:
-        risks.append(
-            f"<div class=\"assessment-line\">⚠ {open_issues_total} open issues are {escape(issue_load_status)}</div>"
-        )
-    stale_pr_count = health_metrics.get("stale_pr_count", 0)
-    sampled_prs = health_metrics.get("sampled_prs_with_dates", 0)
-    if stale_pr_count:
-        risks.append(
-            f"<div class=\"assessment-line\">⚠ {stale_pr_count} of {sampled_prs} sampled PRs have been open over 180 days</div>"
-        )
-    if not risks:
-        risks.append("<div class=\"assessment-line\">✓ No high-confidence maintenance risks detected</div>")
-
+    issues = snapshot.get("issues", [])
     recommendations = []
-    if candidates:
-        candidate = candidates[0]
-        issue = candidate["issue"]
-        recommendations.append(
-            f"<a class=\"recommendation-pill\" href=\"{escape(str(issue.get('url', '#')))}\">"
-            f"Start with #{issue.get('number')}: {escape(str(issue.get('title', 'Issue')))}</a>"
-        )
-    elif open_issues_total == 0:
-        recommendations.append("<span class=\"recommendation-pill\">Check for an external issue tracker</span>")
-    else:
-        recommendations.append("<span class=\"recommendation-pill\">Ask maintainers for a scoped beginner task</span>")
-    if open_prs_total == 0:
-        recommendations.append("<span class=\"recommendation-pill\">Confirm whether contributions are currently active</span>")
-    if not protected_count:
-        default = snapshot.get("meta", {}).get("default_branch", "main")
-        recommendations.append(f"<span class=\"recommendation-pill\">Optional: protect {escape(str(default))} from direct pushes</span>")
-    if stale_count:
-        recommendations.append("<span class=\"recommendation-pill\">Triage stale issues before adding new work</span>")
 
+    if vulns:
+        recommendations.append("Review OSV vulnerability records first and confirm whether the repository is affected.")
+    if not badge.get("found"):
+        recommendations.append("Consider completing the OpenSSF Best Practices Badge to document security hygiene.")
+    if not any((
+        insights.get("has_security_insights"),
+        insights.get("has_security_md"),
+        insights.get("has_github_security_md"),
+    )):
+        recommendations.append("Add a SECURITY.md file to tell contributors how to report vulnerabilities.")
+
+    low_checks = []
+    for check in scorecard.get("checks") or []:
+        try:
+            score = float(check.get("score"))
+        except (TypeError, ValueError):
+            continue
+        if score < 5:
+            low_checks.append(check.get("name") or "Scorecard check")
+    if low_checks:
+        recommendations.append("Prioritize low OpenSSF Scorecard checks: " + ", ".join(low_checks[:4]) + ".")
+
+    if len(branches) > 30:
+        recommendations.append("Review branch sprawl and delete stale branches that have no active PR.")
+    if _beginner_issue_candidates(issues):
+        recommendations.append("Use the Good First Issues shortlist for a safer first contribution path.")
+    elif not issues:
+        recommendations.append("No open GitHub issues were found; check whether the project uses an external tracker.")
+
+    if not recommendations:
+        recommendations.append("Security metadata looks reasonably complete; keep monitoring Scorecard, OSV, and branch activity over time.")
+
+    lines = ['<h2 class="report-heading report-heading-yellow">💡 Recommendations</h2>', ""]
+    lines.extend(f"- {recommendation}" for recommendation in recommendations)
+    return "\n".join(lines)
+
+
+def _scorecard_indicator(score: Any) -> str:
+    try:
+        numeric = float(score)
+    except (TypeError, ValueError):
+        return "Not scored"
+    if numeric >= 7:
+        return "Pass"
+    if numeric > 0:
+        return "Review"
+    return "Fail"
+
+
+def _status_tone(label: str) -> str:
+    lowered = label.lower()
+    if lowered in {"pass", "present", "available", "gold"}:
+        return "good"
+    if lowered in {"review", "silver", "passing"}:
+        return "warn"
+    if lowered in {"fail", "missing", "unavailable"}:
+        return "bad"
+    return "neutral"
+
+
+def _scorecard_check_by_name(snapshot: dict[str, Any], target: str) -> dict[str, Any] | None:
+    target_lower = target.lower()
+    for check in (snapshot.get("openssf_scorecard") or {}).get("checks") or []:
+        name = str(check.get("name") or "").lower()
+        if name == target_lower:
+            return check
+    return None
+
+
+def _openSSF_intro(title: str, body: str) -> str:
+    return (
+        f'<div class="security-intro">'
+        f'<strong>{escape(title)}</strong>'
+        f'<p>{escape(body)}</p>'
+        '</div>'
+    )
+
+
+def _plain_scorecard_reason(name: str, score: Any, reason: str) -> str:
+    name_lower = name.lower()
+    reason_lower = reason.lower()
+    try:
+        numeric_score = float(score)
+    except (TypeError, ValueError):
+        numeric_score = None
+
+    if (
+        "branch" in name_lower
+        and "protection" in name_lower
+        and "classic branch protection" in reason_lower
+    ):
+        return (
+            "Branch protection rules exist but are restricted. This repository uses classic "
+            "branch protection, which requires admin access to read. Treat this as a sign of "
+            "stricter security, not a failure."
+        )
+    if "internal error" in reason_lower and "github token" in reason_lower and "branch protection" in reason_lower:
+        return (
+            "Branch protection rules exist but are restricted. This repository uses classic "
+            "branch protection, which requires admin access to read. Treat this as a sign of "
+            "stricter security, not a failure."
+        )
+    if "depend" in name_lower and "pinn" in name_lower and numeric_score == 0:
+        return (
+            "Dependencies in CI/CD workflows are not pinned to exact commit hashes. "
+            "This is a supply-chain risk even in large projects."
+        )
+    if "release" in name_lower and ("no releases" in reason_lower or "not found" in reason_lower or numeric_score == 0):
+        return (
+            "No signed GitHub Releases detected. This project may publish through npm, "
+            "PyPI, or a custom pipeline instead."
+        )
+    if any(raw in reason_lower for raw in ("internal error", "unavailable", "rpc error", "token", "exception")):
+        return "Scorecard could not read this signal fully. Review the project settings manually if this check matters."
+    return reason or "No reason provided."
+
+
+def _best_practices_badge_section(snapshot: dict[str, Any]) -> str:
+    badge = snapshot.get("best_practices_badge") or {}
+    if badge.get("found") and badge.get("level"):
+        level = str(badge["level"]).strip().lower()
+        label = {"passing": "Passing", "silver": "Silver", "gold": "Gold"}.get(level, level.title())
+        return "\n".join([
+            "### OpenSSF Best Practices Badge",
+            "",
+            _openSSF_intro(
+                "What this badge means",
+                "The OpenSSF Best Practices Badge is a public signal that a project follows a set of community security and maintenance practices. "
+                "It matters because it tells contributors and users that the project has taken concrete steps toward safer, more predictable releases. "
+                f"A {label.lower()} badge means the project reached a documented level of practice maturity, not just a one-time scan result."
+            ),
+            "",
+            '<div class="badge-showcase">',
+            f'<div class="badge-medal badge-{escape(level)}">{escape(label)}</div>',
+            '<div>',
+            '<strong>OpenSSF Best Practices badge detected</strong>',
+            '<p>This project has completed OpenSSF Best Practices criteria for open-source quality and security hygiene.</p>',
+            '</div>',
+            '</div>',
+        ])
+    fallback = _scorecard_check_by_name(snapshot, "CII-Best-Practices")
+    if fallback:
+        score = fallback.get("score")
+        reason = _plain_scorecard_reason(
+            str(fallback.get("name") or "CII-Best-Practices"),
+            score,
+            str(fallback.get("reason") or ""),
+        )
+        try:
+            numeric_score = float(score)
+        except (TypeError, ValueError):
+            numeric_score = 0
+        if numeric_score >= 5:
+            return "\n".join([
+                "### OpenSSF Best Practices Badge",
+                "",
+                _openSSF_intro(
+                    "What this badge means",
+                    "The OpenSSF Best Practices Badge is a public signal that a project follows a set of community security and maintenance practices. "
+                    "It matters because it helps contributors quickly see whether a repository is being run with security and release discipline in mind. "
+                    "This project did not return a badge directly, but Scorecard shows the badge-related check as passing, which is a strong proxy signal."
+                ),
+                "",
+                '<div class="badge-showcase">',
+                '<div class="badge-medal badge-passing">Passing</div>',
+                '<div>',
+                '<strong>Best Practices signal found in Scorecard</strong>',
+                '<p>The direct badge API did not return a project, but Scorecard reports the CII-Best-Practices check as passing.</p>',
+                '</div>',
+                '</div>',
+            ])
+        return "\n".join([
+            "### OpenSSF Best Practices Badge",
+            "",
+            _openSSF_intro(
+                "What this badge means",
+                "The OpenSSF Best Practices Badge is a public signal that a project follows a set of community security and maintenance practices. "
+                "It matters because it gives maintainers a simple way to show that the project is taking release hygiene seriously. "
+                "The badge was not found here, so the project may still be healthy, but it has not published that public proof yet."
+            ),
+            "",
+            '<div class="security-card security-card-warn">',
+            '<span class="security-status security-status-warn">Review</span>',
+            '<strong>Best Practices badge not confirmed</strong>',
+            f'<p>{escape(reason)}</p>',
+            '<p><a href="https://www.bestpractices.dev" target="_blank" rel="noreferrer">Apply or learn more at bestpractices.dev</a></p>',
+            '</div>',
+        ])
     return "\n".join([
-        '<h2 class="assessment-heading report-heading report-heading-yellow">Repository Assessment</h2>',
-        '<div class="assessment-grid">',
-        '<section class="assessment-card assessment-critical">',
-        '<div class="assessment-card-title">⚠ Critical Findings</div>',
-        f'<div class="assessment-health {health_tone}"><strong>{health_score}/100</strong><span>{escape(str(health_label))}</span></div>',
-        *findings,
-        '</section>',
-        '<section class="assessment-card assessment-risks">',
-        '<div class="assessment-card-title">🔥 Risks</div>',
-        *risks,
-        '</section>',
-        '<section class="assessment-card assessment-recommendations">',
-        '<div class="assessment-card-title">💡 Recommendations</div>',
-        '<div class="recommendation-list">',
-        *recommendations,
-        '</div>',
-        '</section>',
+        "### OpenSSF Best Practices Badge",
+        "",
+        _openSSF_intro(
+            "What this badge means",
+            "The OpenSSF Best Practices Badge is a public signal that a project follows a set of community security and maintenance practices. "
+            "It matters because contributors can use it to judge whether the project is paying attention to release discipline and operational hygiene. "
+            "No badge was detected here, so the project may not have published that proof yet."
+        ),
+        "",
+        '<div class="security-card security-card-warn">',
+        '<span class="security-status security-status-warn">Not detected</span>',
+        '<strong>No OpenSSF Best Practices badge detected</strong>',
+        '<p>The project may still be healthy, but it has not published a Best Practices badge in the OpenSSF database.</p>',
+        '<p><a href="https://www.bestpractices.dev" target="_blank" rel="noreferrer">See the badge program and apply at bestpractices.dev</a></p>',
         '</div>',
     ])
+
+
+def build_security_insights_section(snapshot: dict[str, Any]) -> str:
+    insights = snapshot.get("security_insights") or {}
+    has_security_insights = bool(insights.get("has_security_insights"))
+    has_security_md = bool(insights.get("has_security_md"))
+    has_github_security_md = bool(insights.get("has_github_security_md"))
+
+    def insight_card(title: str, value: bool, detail: str) -> str:
+        label = "Present" if value else "Missing"
+        tone = "good" if value else "warn"
+        return (
+            f'<div class="security-card security-card-{tone}">'
+            f'<span class="security-status security-status-{tone}">{label}</span>'
+            f'<strong>{escape(title)}</strong>'
+            f'<p>{escape(detail)}</p>'
+            '</div>'
+        )
+
+    lines = [
+        "### Security Insights",
+        "",
+        _openSSF_intro(
+            "What this checks",
+            "Security Insights looks for files that tell contributors how this project handles vulnerability reporting and security policies. "
+            "That matters because open source users often need a clear path for reporting issues without opening a public bug report. "
+            "If the files are present, it is easier for maintainers and security researchers to coordinate responsibly."
+        ),
+        "",
+        '<div class="security-card-grid">',
+        insight_card("SECURITY-INSIGHTS.yml/yaml", has_security_insights, "Machine-readable OpenSSF security metadata for tools and reviewers."),
+        insight_card("Root SECURITY.md", has_security_md, "Contributor-facing instructions for reporting vulnerabilities from the repository root."),
+        insight_card(".github/SECURITY.md", has_github_security_md, "GitHub-recognized security policy location for vulnerability reporting."),
+        '</div>',
+    ]
+    if not any((has_security_insights, has_security_md, has_github_security_md)):
+        lines.extend([
+            "",
+            '<div class="recommendation-banner"><strong>Recommendation:</strong> Add a SECURITY.md file to tell contributors how to report vulnerabilities.</div>',
+        ])
+    return "\n".join(lines)
+
+
+def build_security_section(snapshot: dict[str, Any], security_summary: str = "") -> str:
+    scorecard = snapshot.get("openssf_scorecard") or {}
+    badge_md = _best_practices_badge_section(snapshot)
+    if not scorecard.get("available"):
+        if scorecard.get("status_code") == 404:
+            message = (
+                "OpenSSF Scorecard scans a repository for common security and maintenance signals like branch protection, "
+                "dependency pinning, and release practices. The scan matters because it gives a fast, standardized view of "
+                "how the project handles supply-chain and maintenance hygiene. This repository may not be in the OpenSSF database yet, "
+                "so the tool could not return a scorecard result."
+            )
+        else:
+            message = (
+                "OpenSSF Scorecard scans a repository for common security and maintenance signals like branch protection, "
+                "dependency pinning, and release practices. The scan matters because it gives a fast, standardized view of "
+                "how the project handles supply-chain and maintenance hygiene. The lookup failed this time, so the report cannot "
+                "confirm the repository’s current Scorecard state."
+            )
+        return "\n".join([
+            '<h2 class="report-heading report-heading-green">OpenSSF Security Scorecard</h2>',
+            "",
+            f'<div class="security-summary">{escape(security_summary)}</div>' if security_summary else "",
+            "",
+            _openSSF_intro("What Scorecard is", message),
+            "",
+            badge_md,
+        ])
+
+    overall = scorecard.get("score")
+    date = scorecard.get("date")
+    repo = scorecard.get("repo", {}).get("name") if isinstance(scorecard.get("repo"), dict) else None
+    checks = scorecard.get("checks") or []
+    lines = [
+        '<h2 class="report-heading report-heading-green">OpenSSF Security Scorecard</h2>',
+        "",
+        f'<div class="security-summary">{escape(security_summary)}</div>' if security_summary else "",
+        "",
+        _openSSF_intro(
+            "What Scorecard is",
+            "OpenSSF Scorecard scans a repository for common security and maintenance signals like branch protection, dependency pinning, "
+            "release discipline, and workflow hardening. It matters because those small operational choices shape supply-chain risk in real projects. "
+            "The score below is a snapshot of how this repository behaves in practice, not a judgment on code quality."
+        ),
+        "",
+        "### Overall Score",
+        "",
+        '<div class="scorecard-hero">',
+        f'<div class="scorecard-score"><strong>{overall if overall is not None else "?"}/10</strong></div>',
+        '<div>',
+        '<strong>OpenSSF Scorecard</strong>',
+        '<p>Automated security posture checks from the OpenSSF Scorecard service.</p>',
+        '</div>',
+        '</div>',
+    ]
+    if repo:
+        lines.append(f"- **Scorecard repository:** {repo}")
+    if date:
+        lines.append(f"- **Scorecard date:** {date}")
+    lines.extend(["", "### Individual Checks", "", '<div class="scorecard-check-grid">'])
+    if not checks:
+        lines.append('<div class="security-card security-card-neutral"><strong>No individual checks returned</strong><p>The Scorecard API returned an overall result without detailed checks.</p></div>')
+        lines.append("</div>")
+        lines.extend(["", badge_md])
+        return "\n".join(lines)
+
+    for check in checks:
+        name = check.get("name") or "Unnamed check"
+        score = check.get("score")
+        reason = _plain_scorecard_reason(str(name), score, str(check.get("reason") or ""))
+        indicator = _scorecard_indicator(score)
+        tone = _status_tone(indicator)
+        score_text = score if score is not None else "Data unavailable"
+        lines.extend([
+            f'<div class="scorecard-check scorecard-check-{tone}">',
+            f'<span class="security-status security-status-{tone}">{indicator}</span>',
+            f'<strong>{escape(str(name))}</strong>',
+            f'<small>Score: {escape(str(score_text))}/10</small>',
+            f'<p>{escape(str(reason))}</p>',
+            '</div>',
+        ])
+    lines.extend(["</div>", "", badge_md])
+    return "\n".join(lines).strip()
+
+
+def _vulnerability_id(vuln: dict[str, Any]) -> str:
+    aliases = vuln.get("aliases") or []
+    cve = next((alias for alias in aliases if str(alias).startswith("CVE-")), None)
+    return cve or vuln.get("id") or "Unknown vulnerability"
+
+
+def _vulnerability_severity(vuln: dict[str, Any]) -> str:
+    severities = vuln.get("severity") or []
+    if severities:
+        first = severities[0]
+        severity_type = first.get("type") or "Severity"
+        score = first.get("score") or "Data unavailable"
+        return f"{severity_type}: {score}"
+    database_specific = vuln.get("database_specific") or {}
+    return database_specific.get("severity") or "Severity unavailable"
+
+
+def build_vulnerabilities_section(snapshot: dict[str, Any]) -> str:
+    osv_data = snapshot.get("osv_vulnerabilities") or {}
+    vulns = osv_data.get("vulns") or []
+    lines = [
+        '<h2 class="report-heading report-heading-yellow">OSV Vulnerability Scan</h2>',
+        "",
+        _openSSF_intro(
+            "What OSV is",
+            "OSV is a vulnerability database that tracks known security issues affecting open source projects and packages. "
+            "It matters because it gives maintainers and contributors a quick way to check whether a repository has public known vulnerabilities. "
+            "A clean result means OSV did not return a known issue for this repository URL at the time of the scan."
+        ),
+        "",
+    ]
+    if not vulns:
+        if not osv_data.get("available", True):
+            lines.append(
+                '<div class="security-card security-card-warn">'
+                '<span class="security-status security-status-warn">Scan failed</span>'
+                '<strong>OSV scan could not be completed — try again later.</strong>'
+                '<p>The rest of the report is still generated from GitHub and OpenSSF data.</p>'
+                '</div>'
+            )
+        else:
+            lines.append(
+                '<div class="security-card security-card-good">'
+                '<span class="security-status security-status-good">Clear</span>'
+                '<strong>No known vulnerabilities found in the OSV database — this repository has a clean vulnerability record.</strong>'
+                '<p>OSV did not return known vulnerability records for this repository URL, which means no public vulnerability matches were found during the scan.</p>'
+                '</div>'
+            )
+        return "\n".join(lines)
+
+    lines.extend([
+        '<div class="vuln-list">',
+        f'<div class="security-card security-card-bad"><span class="security-status security-status-bad">Review</span><strong>{len(vulns)} known vulnerabilit{"y" if len(vulns) == 1 else "ies"} returned by OSV</strong><p>Confirm whether the repository is affected before treating these as exploitable findings.</p></div>',
+    ])
+    for vuln in vulns:
+        vuln_id = _vulnerability_id(vuln)
+        summary = vuln.get("summary") or vuln.get("details") or "No summary provided."
+        summary = summary.strip().replace("\n", " ")
+        if len(summary) > 240:
+            summary = summary[:237].rstrip() + "..."
+        aliases = [alias for alias in vuln.get("aliases", []) if alias != vuln_id]
+        alias_text = f" ({', '.join(aliases[:3])})" if aliases else ""
+        link = f"https://osv.dev/vulnerability/{vuln.get('id')}" if vuln.get("id") else ""
+        lines.extend([
+            f"### {vuln_id}{alias_text}",
+            "",
+            f"- **Severity:** {_vulnerability_severity(vuln)}",
+            f"- **Summary:** {summary}",
+        ])
+        if link:
+            link_html = f'<a href="{escape(link)}">View OSV record</a>'
+        else:
+            link_html = ""
+        lines.extend([
+            '<div class="vuln-card">',
+            f'<strong>{escape(str(vuln_id))}{escape(alias_text)}</strong>',
+            f'<span>{escape(_vulnerability_severity(vuln))}</span>',
+            f'<p>{escape(summary)}</p>',
+            link_html,
+            '</div>',
+        ])
+    lines.append("</div>")
+    return "\n".join(lines).strip()
 
 
 def build_branch_snapshot(snapshot: dict[str, Any]) -> str:
@@ -505,141 +991,45 @@ def _branch_activity(branch: dict, open_prs: int) -> tuple[str, str]:
     return "Unknown activity", "commit recency was unavailable and no sampled open PR uses it; avoid making a strong conclusion"
 
 
-def build_issues_section(snapshot: dict[str, Any]) -> str:
+def build_good_first_issues_section(snapshot: dict[str, Any]) -> str:
     issues = snapshot.get("issues", [])
     stats = snapshot.get("stats", {})
     total = stats.get("open_issues_total", len(issues))
     sampled = stats.get("issues_sampled", len(issues))
+    candidates = _beginner_issue_candidates(issues, limit=5)
     lines = [
-        '<h2 class="report-heading report-heading-green">Open Issues Report</h2>',
+        '<h2 class="report-heading report-heading-green">Good First Issues</h2>',
         "",
-        "### Real Numbers Summary",
-        "",
-        f"- **Open issues:** {total} total, {sampled} sampled",
-        f"- **Sample source:** GitHub API page 1, up to {stats.get('api_page_size', 100)} items fetched",
-        f"- **Label breakdown:** {_top_counts(_label_counts(issues))}",
-        f"- **Top reporters:** {_top_counts(_author_counts(issues), limit=3)}",
+        f"RepoFlow sampled **{sampled}** of **{total}** open GitHub issues and ranked beginner-friendly tasks using labels, scope clues, assignee status, comments, and concrete file references.",
         "",
     ]
     if not issues:
         if total:
-            lines.append("Data unavailable: GitHub reported open issues, but no issue records were available in the sampled API response.")
+            lines.append("GitHub reports open issues, but the sampled API response did not include issue records.")
         else:
-            lines.append("No open issues at this time.")
+            lines.append("No open GitHub issues found. This repo may use an external issue tracker or currently have no public issue queue.")
         return "\n".join(lines)
 
-    candidates = _beginner_issue_candidates(issues)
-    lines.extend(["### Beginner Contribution Shortlist", ""])
-    if candidates:
-        lines.append(
-            "These are ranked from the sampled issues using labels, scope clues, assignee status, "
-            "description quality, and concrete file references. Verify scope with maintainers before starting."
-        )
-        lines.append("")
-        for candidate in candidates:
-            issue = candidate["issue"]
-            reasons = "; ".join(candidate["reasons"])
-            lines.extend([
-                f"#### #{issue.get('number')} - {issue.get('title')}",
-                "",
-                f"- **Estimated difficulty:** {candidate['difficulty']}",
-                f"- **Why it may suit a student:** {reasons}.",
-                f"- **Suggested first step:** {candidate['first_step']}",
-                f"- **Issue:** [Open on GitHub]({issue.get('url', '#')})",
-                "",
-            ])
-    else:
+    if not candidates:
         lines.extend([
-            "No issue in the sample has enough evidence to recommend confidently to a beginner.",
-            "Ask maintainers for a small, well-scoped task instead of selecting an issue from its title alone.",
+            "No sampled issue has enough evidence to confidently recommend as beginner-friendly.",
+            "For a first contribution, ask maintainers for a small scoped task instead of picking an issue only from its title.",
+        ])
+        return "\n".join(lines)
+
+    for candidate in candidates:
+        issue = candidate["issue"]
+        reasons = "; ".join(candidate["reasons"])
+        lines.extend([
+            f"### #{issue.get('number')} - {issue.get('title')}",
+            "",
+            f"- **Estimated difficulty:** {candidate['difficulty']}",
+            f"- **Why it may suit a student:** {reasons}.",
+            f"- **Suggested first step:** {candidate['first_step']}",
+            f"- **Issue:** [Open on GitHub]({issue.get('url', '#')})",
             "",
         ])
-
-    lines.extend(["### Sampled Issue Details", ""])
-
-    grouped: dict[str, list[dict]] = defaultdict(list)
-    for issue in issues:
-        grouped[_label_group(issue.get("labels", []))].append(issue)
-
-    for group_name in sorted(grouped.keys()):
-        group = grouped[group_name]
-        lines.append(f"### {group_name} ({len(group)} sampled)")
-        lines.append("")
-        for issue in group[:5]:
-            author = issue.get("author") or "unknown"
-            url = issue.get("url", "#")
-            lines.append(
-                f"- **Issue #{issue['number']}:** {issue['title']} - "
-                f"reported by @{author} - [View issue]({url})"
-            )
-            if issue.get("labels"):
-                lines.append(f"  - Labels: {', '.join(issue['labels'])}")
-            if issue.get("comments"):
-                lines.append(f"  - Comments: {issue['comments']}")
-        if len(group) > 5:
-            lines.append(f"- _{len(group) - 5} more sampled issues in this group are omitted; use GitHub for the full list._")
-        lines.append("")
-
     return "\n".join(lines).strip()
-
-
-def build_pull_requests_section(snapshot: dict[str, Any]) -> str:
-    prs = snapshot.get("pull_requests", [])
-    stats = snapshot.get("stats", {})
-    total = stats.get("open_prs_total", len(prs))
-    sampled = stats.get("pull_requests_sampled", len(prs))
-    draft_count = sum(1 for pr in prs if pr.get("draft"))
-    base_counts = Counter(pr.get("base") or "unknown" for pr in prs)
-    lines = [
-        '<h2 class="report-heading report-heading-green">Pull Request Analysis Report</h2>',
-        "",
-        "### Real Numbers Summary",
-        "",
-        f"- **Open pull requests:** {total} total, {sampled} sampled",
-        f"- **Draft PRs in sample:** {draft_count}",
-        f"- **Target branches:** {_top_counts(base_counts)}",
-        f"- **Top PR authors:** {_top_counts(_author_counts(prs), limit=3)}",
-        "",
-    ]
-    if not prs:
-        if total:
-            lines.append("Data unavailable: GitHub reported open PRs, but no PR records were available in the sampled API response.")
-        else:
-            lines.append("There are currently **no open pull requests**.")
-        return "\n".join(lines)
-
-    lines.append("### Open Pull Requests")
-    lines.append("")
-
-    themes: Counter = Counter()
-    for pr in prs:
-        text = f"{pr.get('title', '')} {pr.get('head', '')}".lower()
-        if any(token in text for token in ("fix", "bug", "hotfix")):
-            themes["Bug fixes"] += 1
-        elif any(token in text for token in ("feat", "feature", "add")):
-            themes["Features"] += 1
-        elif "doc" in text:
-            themes["Documentation"] += 1
-        elif any(token in text for token in ("ci", "test", "workflow")):
-            themes["Tests/CI"] += 1
-        else:
-            themes["Other"] += 1
-    lines.append(f"**Work themes in the sample:** {_top_counts(themes)}")
-    lines.append("")
-
-    for pr in prs[:12]:
-        author = pr.get("author") or "unknown"
-        url = pr.get("url", "#")
-        draft = " (draft)" if pr.get("draft") else ""
-        lines.append(
-            f"- **PR #{pr['number']}:** \"{pr['title']}\"{draft} - "
-            f"submitted by @{author}, **{pr.get('head')}** -> **{pr.get('base')}** - "
-            f"[View PR]({url})"
-        )
-    if len(prs) > 12:
-        lines.append(f"- _{len(prs) - 12} additional sampled PRs are omitted; use GitHub for the full queue._")
-
-    return "\n".join(lines)
 
 
 def build_branches_section(snapshot: dict[str, Any]) -> str:
@@ -756,9 +1146,21 @@ def build_branches_section(snapshot: dict[str, Any]) -> str:
 
     lines.append("### Protected Branches")
     lines.append("")
-    if protected:
-        for name in sorted(protected):
-            lines.append(f"- **{name}** — protected")
+    sampled_count = stats.get("branches_sampled", len(branches))
+    unprotected = sorted(
+        branch.get("name", "")
+        for branch in branches
+        if branch.get("name") and not branch.get("protected")
+    )
+    if protected_count:
+        lines.append(f"**{protected_count} of {sampled_count} sampled branches are protected ✅**")
+        if unprotected:
+            lines.append("")
+            lines.append("Unprotected sampled branches:")
+            for name in unprotected[:10]:
+                lines.append(f"- **{name}**")
+            if len(unprotected) > 10:
+                lines.append(f"- _{len(unprotected) - 10} more unprotected branches omitted._")
     else:
         lines.append(
             "No protected branches were found in the sampled branch list. "

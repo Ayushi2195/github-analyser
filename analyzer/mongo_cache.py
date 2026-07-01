@@ -27,33 +27,21 @@ _CONNECTED_URI = None
 
 class RepoAnalysisCache(Document):
     repo_url = StringField(required=True, unique=True)
-    owner = StringField()
-    repo_name = StringField()
-
     analyzed_at = DateTimeField()
-
-    health_score = IntField()
-    health_label = StringField()
-    health_signals = ListField(StringField())
-
-    stars = IntField()
-    forks = IntField()
-    primary_language = StringField()
-
-    open_issues_count = IntField()
-    open_prs_count = IntField()
-
-    tech_stack = ListField(StringField())
-
-    report_sections = DictField()
-
+    owner = StringField()
     pdf_path = StringField()
+    primary_language = StringField()
+    repo_name = StringField()
+    openssf_sections = DictField()
     is_featured = BooleanField(default=False)
     show_in_gallery = BooleanField(default=True)
+    stars = IntField()
+    tech_stack = ListField(StringField())
 
     meta = {
         "collection": "analyzed-reports",
-        "indexes": ["repo_url", "-analyzed_at", "primary_language", "health_label", "show_in_gallery", "is_featured"],
+        "strict": False,
+        "indexes": ["repo_url", "-analyzed_at", "primary_language", "show_in_gallery", "is_featured"],
     }
 
 
@@ -123,7 +111,7 @@ def _tech_stack(snapshot: dict[str, Any]) -> list[str]:
 def save_analysis_cache(
     repo_url: str,
     snapshot: dict[str, Any],
-    health: dict[str, Any],
+    security_summary: dict[str, Any],
     report_sections: dict[str, str],
     pdf_path: str = "",
 ) -> RepoAnalysisCache:
@@ -132,8 +120,6 @@ def save_analysis_cache(
     meta = snapshot.get("meta", {})
     owner = snapshot.get("owner", "")
     repo = snapshot.get("repo", "")
-    open_issues_count = len(snapshot.get("issues", []))
-    open_prs_count = len(snapshot.get("pull_requests", []))
     analyzed_at = timezone.localtime(timezone.now()).replace(tzinfo=None)
     existing = RepoAnalysisCache.objects(repo_url=normalized_url).only(
         "is_featured", "show_in_gallery"
@@ -148,19 +134,34 @@ def save_analysis_cache(
         set__owner=owner,
         set__repo_name=repo,
         set__analyzed_at=analyzed_at,
-        set__health_score=health.get("score", 0),
-        set__health_label=health.get("label", "Unknown"),
-        set__health_signals=health.get("notes", []),
         set__stars=meta.get("stars") or 0,
-        set__forks=meta.get("forks") or 0,
         set__primary_language=meta.get("language") or "",
-        set__open_issues_count=open_issues_count,
-        set__open_prs_count=open_prs_count,
         set__tech_stack=_tech_stack(snapshot),
-        set__report_sections=report_sections,
+        set__openssf_sections={
+            "scorecard": snapshot.get("openssf_scorecard") or {},
+            "best_practices_badge": snapshot.get("best_practices_badge") or {},
+            "osv_vulnerabilities": snapshot.get("osv_vulnerabilities") or {},
+            "security_insights": snapshot.get("security_insights") or {},
+            "security_summary": security_summary,
+            "report": report_sections,
+        },
         set__pdf_path=pdf_path,
         set__is_featured=is_featured,
         set__show_in_gallery=show_in_gallery,
+    )
+    RepoAnalysisCache._get_collection().update_one(
+        {"repo_url": normalized_url},
+        {
+            "$unset": {
+                "health_score": "",
+                "health_label": "",
+                "health_signals": "",
+                "forks": "",
+                "open_issues_count": "",
+                "open_prs_count": "",
+                "report_sections": "",
+            }
+        },
     )
     print(f"MongoDB saved report: {owner}/{repo}", flush=True)
     return saved
@@ -173,17 +174,23 @@ def update_pdf_path(repo_url: str, pdf_path: str) -> None:
 
 
 def cached_markdown(cached: RepoAnalysisCache) -> str:
-    sections = cached.report_sections or {}
+    sections = ((cached.openssf_sections or {}).get("report") or {})
+    if not sections:
+        sections = getattr(cached, "report_sections", None) or {}
     return sections.get("markdown", "")
 
 
 def cached_html(cached: RepoAnalysisCache) -> str:
-    sections = cached.report_sections or {}
+    sections = ((cached.openssf_sections or {}).get("report") or {})
+    if not sections:
+        sections = getattr(cached, "report_sections", None) or {}
     return sections.get("html", "")
 
 
 def cached_branch_count(cached: RepoAnalysisCache) -> int:
-    sections = cached.report_sections or {}
+    sections = ((cached.openssf_sections or {}).get("report") or {})
+    if not sections:
+        sections = getattr(cached, "report_sections", None) or {}
     return int(sections.get("branch_count") or 0)
 
 

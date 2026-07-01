@@ -118,12 +118,15 @@
 }
 
 .report-prose pre {
-  background: #1e293b;
-  color: #e2e8f0;
-  padding: 1rem;
-  border-radius: 0.75rem;
+  background: #0f172a;
+  color: #e5f0ff;
+  padding: 1.2rem;
+  border-radius: 1rem;
+  border: 1px solid #263449;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
   overflow-x: auto;
-  margin: 1rem 0;
+  margin: 1rem 0 1.5rem;
+  line-height: 1.65;
 }
 
 .report-prose pre code {
@@ -161,6 +164,229 @@
   color: #64748b;
   margin: 1rem 0;
   font-style: italic;
+}
+
+.report-prose .overview-card {
+  padding: 1rem 1.1rem;
+  border: 1px solid #dbeafe;
+  border-left: 5px solid #2563eb;
+  border-radius: 0.9rem;
+  background: linear-gradient(180deg, #eff6ff, #ffffff);
+  color: #334155;
+  line-height: 1.7;
+}
+
+.report-prose .overview-card-muted {
+  border-color: #e2e8f0;
+  border-left-color: #94a3b8;
+  background: #f8fafc;
+}
+
+.report-prose .security-summary,
+.report-prose .security-intro {
+  margin: 0.75rem 0 1rem;
+  padding: 0.95rem 1rem;
+  border: 1px solid #c7d2fe;
+  border-left: 5px solid #6366f1;
+  border-radius: 0.9rem;
+  background: linear-gradient(180deg, #eef2ff, #ffffff);
+  color: #334155;
+  line-height: 1.65;
+}
+
+.report-prose .security-summary strong,
+.report-prose .security-intro strong {
+  display: block;
+  margin-bottom: 0.35rem;
+  color: #1e293b;
+  font-size: 0.95rem;
+}
+
+.report-prose .security-summary p,
+.report-prose .security-intro p {
+  margin: 0;
+  color: #475569;
+}
+
+.report-prose .tech-stack-grid,
+.report-prose .repo-stat-grid,
+.report-prose .security-card-grid,
+.report-prose .scorecard-check-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.85rem;
+  margin: 0.85rem 0 1.5rem;
+}
+
+.report-prose .tech-pill {
+  padding: 0.85rem;
+  border: 1px solid #e0e7ff;
+  border-radius: 0.9rem;
+  background: #f8fafc;
+}
+
+.report-prose .tech-pill strong,
+.report-prose .repo-stat-card strong,
+.report-prose .security-card strong,
+.report-prose .scorecard-check strong,
+.report-prose .vuln-card strong {
+  display: block;
+  color: #0f172a;
+  font-weight: 800;
+}
+
+.report-prose .tech-pill span,
+.report-prose .security-card p,
+.report-prose .scorecard-check p,
+.report-prose .vuln-card p {
+  display: block;
+  margin-top: 0.35rem;
+  color: #64748b;
+  font-size: 0.84rem;
+  line-height: 1.55;
+}
+
+.report-prose .repo-stat-card {
+  padding: 0.9rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.85rem;
+  background: #ffffff;
+}
+
+.report-prose .repo-stat-card span {
+  display: block;
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.35rem;
+}
+
+.report-prose .repo-stat-good { border-color: #bbf7d0; background: #f0fdf4; }
+.report-prose .repo-stat-warn { border-color: #fde68a; background: #fffbeb; }
+
+.report-prose .scorecard-hero {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  padding: 1rem;
+  border: 1px solid #c7d2fe;
+  border-radius: 1rem;
+  background: linear-gradient(135deg, #eef2ff, #ffffff);
+  margin: 0.75rem 0 1.25rem;
+}
+
+.report-prose .scorecard-score {
+  min-width: 92px;
+  height: 92px;
+  border-radius: 999px;
+  border: 9px solid #6366f1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #3730a3;
+  background: #ffffff;
+}
+
+.report-prose .scorecard-score strong { font-size: 1.9rem; }
+.report-prose .scorecard-score span { font-weight: 800; color: #64748b; }
+
+.report-prose .security-card,
+.report-prose .scorecard-check,
+.report-prose .vuln-card {
+  padding: 0.95rem;
+  border: 1px solid #e2e8f0;
+  border-left-width: 5px;
+  border-radius: 0.9rem;
+  background: #ffffff;
+}
+
+.report-prose .security-card-good,
+.report-prose .scorecard-check-good { border-left-color: #10b981; background: #f0fdf4; }
+.report-prose .security-card-warn,
+.report-prose .scorecard-check-warn { border-left-color: #f59e0b; background: #fffbeb; }
+.report-prose .security-card-bad,
+.report-prose .scorecard-check-bad { border-left-color: #ef4444; background: #fff1f2; }
+.report-prose .security-card-neutral,
+.report-prose .scorecard-check-neutral { border-left-color: #64748b; background: #f8fafc; }
+
+.report-prose .security-status {
+  display: inline-flex;
+  align-items: center;
+  width: max-content;
+  padding: 0.18rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.55rem;
+}
+
+.report-prose .security-status-good { background: #d1fae5; color: #047857; }
+.report-prose .security-status-warn { background: #fef3c7; color: #b45309; }
+.report-prose .security-status-bad { background: #ffe4e6; color: #be123c; }
+.report-prose .security-status-neutral { background: #e2e8f0; color: #475569; }
+
+.report-prose .scorecard-check small {
+  display: block;
+  margin-top: 0.25rem;
+  color: #475569;
+  font-weight: 800;
+}
+
+.report-prose .badge-showcase {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  padding: 1rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 1rem;
+  background: #ffffff;
+  margin: 0.75rem 0 1.25rem;
+}
+
+.report-prose .badge-medal {
+  width: 92px;
+  height: 82px;
+  clip-path: polygon(25% 4%, 75% 4%, 100% 50%, 75% 96%, 25% 96%, 0 50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #111827;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 0.8rem;
+  flex: 0 0 auto;
+}
+
+.report-prose .badge-gold { background: linear-gradient(135deg, #fef3c7, #f59e0b); }
+.report-prose .badge-silver { background: linear-gradient(135deg, #f8fafc, #94a3b8); }
+.report-prose .badge-passing { background: linear-gradient(135deg, #dcfce7, #22c55e); }
+
+.report-prose .recommendation-banner {
+  padding: 0.9rem 1rem;
+  border: 1px solid #fcd34d;
+  border-left: 5px solid #f59e0b;
+  border-radius: 0.85rem;
+  background: #fffbeb;
+  color: #78350f;
+  font-weight: 700;
+}
+
+.report-prose .vuln-list {
+  display: grid;
+  gap: 0.85rem;
+  margin: 0.85rem 0 1.5rem;
+}
+
+.report-prose .vuln-card span {
+  display: inline-block;
+  margin-top: 0.35rem;
+  color: #be123c;
+  font-weight: 800;
 }
 
 .report-prose .assessment-grid {
@@ -281,7 +507,17 @@
 
 @media (max-width: 768px) {
   .report-prose .assessment-grid,
-  .report-prose .branch-snapshot-grid {
+  .report-prose .branch-snapshot-grid,
+  .report-prose .tech-stack-grid,
+  .report-prose .repo-stat-grid,
+  .report-prose .security-card-grid,
+  .report-prose .scorecard-check-grid {
     grid-template-columns: 1fr;
+  }
+
+  .report-prose .scorecard-hero,
+  .report-prose .badge-showcase {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }

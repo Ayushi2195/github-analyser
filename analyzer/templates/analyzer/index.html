@@ -17,7 +17,7 @@
                     <span class="block text-accent-gold mt-1">In One Click</span>
                 </h1>
                 <p class="mt-6 text-slate-600 text-lg max-w-xl mx-auto lg:mx-0 leading-relaxed">
-                    Paste a public GitHub URL and get a beautiful report — structure, health score, issues, pull requests, and branches. Powered by CrewAI agents.
+                    Paste a public GitHub URL and get a security-first report — structure, OpenSSF signals, OSV vulnerabilities, branches, and good first issues.
                 </p>
                 <div class="mt-8 flex flex-wrap gap-4 justify-center lg:justify-start">
                     <a href="#analyze" class="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-brand-600 to-violet-600 text-white font-bold px-8 py-3.5 shadow-soft hover:shadow-xl hover:-translate-y-0.5 transition-all">
@@ -59,7 +59,7 @@
                         </svg>
                         <div class="mt-4 grid grid-cols-3 gap-2 text-center text-xs font-semibold text-slate-500">
                             <span class="rounded-lg bg-violet-50 py-2 text-brand-600">Structure</span>
-                            <span class="rounded-lg bg-amber-50 py-2 text-amber-600">Issues</span>
+                            <span class="rounded-lg bg-amber-50 py-2 text-amber-600">OpenSSF</span>
                             <span class="rounded-lg bg-rose-50 py-2 text-rose-600">Branches</span>
                         </div>
                     </div>
@@ -78,12 +78,12 @@
                 <p class="mt-1 text-xs sm:text-sm font-medium text-slate-500">Repos analyzed</p>
             </div>
             <div class="bg-white/85 backdrop-blur rounded-2xl border border-violet-100 p-5 shadow-card">
-                <p class="text-2xl sm:text-3xl font-extrabold text-emerald-600">{{ avg_health_score }}/100</p>
-                <p class="mt-1 text-xs sm:text-sm font-medium text-slate-500">Average health score</p>
+                <p class="text-2xl sm:text-3xl font-extrabold text-emerald-600">{{ avg_health_score }}{% if avg_health_score != "N/A" %}/10{% endif %}</p>
+                <p class="mt-1 text-xs sm:text-sm font-medium text-slate-500">Avg Scorecard score</p>
             </div>
             <div class="bg-white/85 backdrop-blur rounded-2xl border border-violet-100 p-5 shadow-card">
                 <p class="text-2xl sm:text-3xl font-extrabold text-brand-600">{{ healthy_count }}</p>
-                <p class="mt-1 text-xs sm:text-sm font-medium text-slate-500">Healthy repos</p>
+                <p class="mt-1 text-xs sm:text-sm font-medium text-slate-500">Scorecards available</p>
             </div>
             <div class="bg-white/85 backdrop-blur rounded-2xl border border-violet-100 p-5 shadow-card">
                 <p class="text-2xl sm:text-3xl font-extrabold text-accent-gold">{{ language_count }}</p>
@@ -106,18 +106,18 @@
             </div>
             <div class="group bg-white/90 backdrop-blur rounded-2xl p-6 border border-violet-100 shadow-card hover:shadow-soft hover:-translate-y-1 transition-all">
                 <div class="h-12 w-12 rounded-2xl bg-gradient-to-br from-rose-500 to-pink-600 flex items-center justify-center text-white text-xl mb-4 group-hover:scale-110 transition-transform">🐛</div>
-                <h3 class="font-bold text-slate-800">Issues</h3>
-                <p class="mt-2 text-sm text-slate-500 leading-relaxed">Every open issue listed with authors, labels, and direct links.</p>
+                <h3 class="font-bold text-slate-800">OpenSSF</h3>
+                <p class="mt-2 text-sm text-slate-500 leading-relaxed">Scorecard, Best Practices Badge, and security policy signals in one place.</p>
             </div>
             <div class="group bg-white/90 backdrop-blur rounded-2xl p-6 border border-violet-100 shadow-card hover:shadow-soft hover:-translate-y-1 transition-all">
                 <div class="h-12 w-12 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white text-xl mb-4 group-hover:scale-110 transition-transform">🔀</div>
-                <h3 class="font-bold text-slate-800">Pull Requests</h3>
-                <p class="mt-2 text-sm text-slate-500 leading-relaxed">See in-flight work — who submitted what and which branches.</p>
+                <h3 class="font-bold text-slate-800">OSV</h3>
+                <p class="mt-2 text-sm text-slate-500 leading-relaxed">Known vulnerability lookup using the OSV.dev database.</p>
             </div>
             <div class="group bg-white/90 backdrop-blur rounded-2xl p-6 border border-violet-100 shadow-card hover:shadow-soft hover:-translate-y-1 transition-all">
                 <div class="h-12 w-12 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-white text-xl mb-4 group-hover:scale-110 transition-transform">📊</div>
-                <h3 class="font-bold text-slate-800">Health Score</h3>
-                <p class="mt-2 text-sm text-slate-500 leading-relaxed">Rule-based repo health with actionable signals — no guesswork.</p>
+                <h3 class="font-bold text-slate-800">Development Insights</h3>
+                <p class="mt-2 text-sm text-slate-500 leading-relaxed">Branch workflow analysis and beginner-friendly issue recommendations.</p>
             </div>
         </div>
     </section>
@@ -152,8 +152,8 @@
             <button type="button" data-filter="python" class="gallery-filter rounded-xl border border-slate-200 bg-white/80 px-4 py-2 text-sm font-bold text-slate-700 transition-colors hover:border-brand-200 hover:text-brand-600">Python</button>
             <button type="button" data-filter="javascript" class="gallery-filter rounded-xl border border-slate-200 bg-white/80 px-4 py-2 text-sm font-bold text-slate-700 transition-colors hover:border-brand-200 hover:text-brand-600">JavaScript</button>
             <button type="button" data-filter="go" class="gallery-filter rounded-xl border border-slate-200 bg-white/80 px-4 py-2 text-sm font-bold text-slate-700 transition-colors hover:border-brand-200 hover:text-brand-600">Go</button>
-            <button type="button" data-filter="healthy" class="gallery-filter rounded-xl border border-slate-200 bg-white/80 px-4 py-2 text-sm font-bold text-slate-700 transition-colors hover:border-brand-200 hover:text-brand-600">Healthy only</button>
-            <button type="button" data-filter="attention" class="gallery-filter rounded-xl border border-slate-200 bg-white/80 px-4 py-2 text-sm font-bold text-slate-700 transition-colors hover:border-brand-200 hover:text-brand-600">Needs attention</button>
+            <button type="button" data-filter="healthy" class="gallery-filter rounded-xl border border-slate-200 bg-white/80 px-4 py-2 text-sm font-bold text-slate-700 transition-colors hover:border-brand-200 hover:text-brand-600">Strong signals</button>
+            <button type="button" data-filter="attention" class="gallery-filter rounded-xl border border-slate-200 bg-white/80 px-4 py-2 text-sm font-bold text-slate-700 transition-colors hover:border-brand-200 hover:text-brand-600">Needs security metadata</button>
         </div>
 
         <div id="galleryGrid" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -172,12 +172,12 @@
                     {% endif %}
                 </div>
                 <div class="mt-5">
-                    <div class="flex items-center justify-between text-sm">
-                        <span class="font-semibold text-slate-500">Health score</span>
-                        <span class="font-extrabold {{ item.health_text_class }}">{{ item.health_score }}/100</span>
-                    </div>
-                    <div class="mt-2 h-2 rounded-full bg-slate-100 overflow-hidden">
-                        <div class="h-full rounded-full {{ item.health_bar_class }}" style="width: {{ item.health_score }}%"></div>
+                    <div class="flex items-center justify-between rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3 text-sm">
+                        <span class="inline-flex items-center gap-2 font-semibold text-slate-500">
+                            <svg class="h-4 w-4 text-brand-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3 5 6v5c0 4.5 2.9 8.4 7 10 4.1-1.6 7-5.5 7-10V6l-7-3z"/></svg>
+                            OpenSSF Scorecard
+                        </span>
+                        <span class="font-extrabold {{ item.health_text_class }}">{{ item.scorecard_score }}</span>
                     </div>
                 </div>
                 <div class="mt-4 flex flex-wrap gap-2">
@@ -311,7 +311,7 @@
             <div>
                 <p class="text-sm font-bold text-brand-600">Sample report</p>
                 <h2 class="mt-2 text-3xl sm:text-4xl font-extrabold text-slate-800">Know what you get before you paste a URL</h2>
-                <p class="mt-4 text-slate-600 leading-relaxed">RepoFlow turns raw GitHub data into a readable report with structure notes, a health score, issue context, pull requests, and branch workflow signals.</p>
+                <p class="mt-4 text-slate-600 leading-relaxed">RepoFlow turns GitHub and OpenSSF data into a readable report with project structure, security metadata, OSV vulnerability lookup, branch workflow, and good first issue guidance.</p>
                 <div class="mt-6 flex flex-wrap gap-2">
                     {% for tag in sample_tags %}
                     <span class="rounded-full bg-white border border-violet-100 px-4 py-2 text-sm font-bold text-slate-600 shadow-sm">{{ tag }}</span>
@@ -334,8 +334,8 @@
                             <h3 class="mt-1 text-xl font-extrabold text-slate-900">{{ sample_preview.repo_display }}</h3>
                         </div>
                         <div class="rounded-2xl px-4 py-3 text-right {% if sample_preview.health_class == 'emerald' %}bg-emerald-50{% elif sample_preview.health_class == 'amber' %}bg-amber-50{% else %}bg-rose-50{% endif %}">
-                            <p class="text-xs font-bold {% if sample_preview.health_class == 'emerald' %}text-emerald-700{% elif sample_preview.health_class == 'amber' %}text-amber-700{% else %}text-rose-700{% endif %}">Health score</p>
-                            <p class="text-2xl font-extrabold {% if sample_preview.health_class == 'emerald' %}text-emerald-600{% elif sample_preview.health_class == 'amber' %}text-amber-600{% else %}text-rose-600{% endif %}">{{ sample_preview.health_score }}/100</p>
+                            <p class="text-xs font-bold {% if sample_preview.health_class == 'emerald' %}text-emerald-700{% elif sample_preview.health_class == 'amber' %}text-amber-700{% else %}text-rose-700{% endif %}">OpenSSF Scorecard</p>
+                            <p class="text-2xl font-extrabold {% if sample_preview.health_class == 'emerald' %}text-emerald-600{% elif sample_preview.health_class == 'amber' %}text-amber-600{% else %}text-rose-600{% endif %}">{{ sample_preview.scorecard_score }}</p>
                         </div>
                     </div>
                     <div class="mt-6 grid gap-4 sm:grid-cols-2">
@@ -344,19 +344,19 @@
                             <p class="mt-2 text-sm leading-relaxed text-slate-600">Root files, package metadata, source folders, and project purpose summarized in plain English.</p>
                         </div>
                         <div class="rounded-2xl bg-amber-50 p-4">
-                            <h4 class="font-bold text-slate-800">Open Issues</h4>
+                            <h4 class="font-bold text-slate-800">OpenSSF Security</h4>
                             {% if sample_preview.has_preview_data %}
-                            <p class="mt-2 text-sm leading-relaxed text-slate-600">{{ sample_preview.issues_total }} open issues tracked from GitHub, grouped by label with authors and links.</p>
+                            <p class="mt-2 text-sm leading-relaxed text-slate-600">Scorecard, Best Practices Badge, and security policy checks appear in the report.</p>
                             {% else %}
-                            <p class="mt-2 text-sm leading-relaxed text-slate-600">Analyze FastAPI once and this preview will show exact GitHub issue titles from MongoDB.</p>
+                            <p class="mt-2 text-sm leading-relaxed text-slate-600">Analyze FastAPI once and this preview will use saved OpenSSF security data from MongoDB.</p>
                             {% endif %}
                         </div>
                         <div class="rounded-2xl bg-rose-50 p-4">
-                            <h4 class="font-bold text-slate-800">Pull Requests</h4>
+                            <h4 class="font-bold text-slate-800">OSV Vulnerabilities</h4>
                             {% if sample_preview.has_preview_data %}
-                            <p class="mt-2 text-sm leading-relaxed text-slate-600">{{ sample_preview.prs_total }} open PRs listed with branch direction and review backlog signals.</p>
+                            <p class="mt-2 text-sm leading-relaxed text-slate-600">Known vulnerabilities are checked against OSV.dev and summarized clearly.</p>
                             {% else %}
-                            <p class="mt-2 text-sm leading-relaxed text-slate-600">Open PR counts and branch direction appear here after the saved FastAPI analysis exists.</p>
+                            <p class="mt-2 text-sm leading-relaxed text-slate-600">OSV lookup results appear here after the saved FastAPI analysis exists.</p>
                             {% endif %}
                         </div>
                         <div class="rounded-2xl bg-emerald-50 p-4">
