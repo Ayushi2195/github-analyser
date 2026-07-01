@@ -9,7 +9,7 @@ from django.http import FileResponse
 from django.shortcuts import redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse
-from pymongo.errors import PyMongoError
+from pymongo.errors import ConnectionFailure, PyMongoError, ServerSelectionTimeoutError
 
 from analyzer.github_api import GitHubAPIError, fetch_repo_snapshot, parse_repo_url
 from analyzer.mongo_cache import (
@@ -342,6 +342,10 @@ def _render_markdown_report(repo_url: str) -> tuple[str, str]:
             report_sections,
         )
         print("Report saved to MongoDB.", flush=True)
+    except (ConnectionFailure, ServerSelectionTimeoutError) as exc:
+        print(f"MongoDB save failed, returning report without cache: {type(exc).__name__}: {exc}", flush=True)
+    except PyMongoError as exc:
+        print(f"MongoDB save skipped, returning report without cache: {type(exc).__name__}: {exc}", flush=True)
     except Exception as exc:
         print(f"MongoDB save skipped: {type(exc).__name__}: {exc}", flush=True)
     _try_write_pdf_file(normalized_url, html_report, md_report)

@@ -3,9 +3,11 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.test import SimpleTestCase
+from pymongo.errors import ServerSelectionTimeoutError
 
 from analyzer.github_api import GitHubAPIError, fetch_best_practices_badge, fetch_osv_vulnerabilities, fetch_repo_snapshot, parse_repo_url
-from analyzer.mongo_cache import cache_is_fresh
+from analyzer.mongo_cache import cache_is_fresh, connect_mongo
+from analyzer.views import _render_markdown_report
 from analyzer.report_builder import (
     build_branch_snapshot,
     build_branches_section,
@@ -235,6 +237,33 @@ class GitHubURLTests(SimpleTestCase):
 
 
 class AnalysisCacheTests(SimpleTestCase):
+    def test_connect_mongo_uses_production_timeout_settings(self):
+        captured = {}
+
+        def fake_connect(**kwargs):
+            captured.update(kwargs)
+
+        class Connection:
+            class Admin:
+                @staticmethod
+                def command(name):
+                    return {"ok": 1}
+
+            admin = Admin()
+
+        with patch.dict("os.environ", {"MONGO_URI": "mongodb://localhost:27017/github-analyser"}), \
+             patch("analyzer.mongo_cache._CONNECTED_URI", None), \
+             patch("analyzer.mongo_cache.get_connection", side_effect=[Exception("none"), Connection()]), \
+             patch("analyzer.mongo_cache.disconnect"), \
+             patch("analyzer.mongo_cache.connect", side_effect=fake_connect):
+            connect_mongo()
+
+        self.assertEqual(captured["serverSelectionTimeoutMS"], 30000)
+        self.assertEqual(captured["connectTimeoutMS"], 30000)
+        self.assertEqual(captured["socketTimeoutMS"], 60000)
+        self.assertTrue(captured["retryWrites"])
+        self.assertEqual(captured["maxPoolSize"], 10)
+
     def test_analysis_younger_than_24_hours_is_fresh(self):
         cached = SimpleNamespace(analyzed_at=datetime.now(timezone.utc) - timedelta(hours=23))
         self.assertTrue(cache_is_fresh(cached))
@@ -242,6 +271,23 @@ class AnalysisCacheTests(SimpleTestCase):
     def test_analysis_older_than_24_hours_is_stale(self):
         cached = SimpleNamespace(analyzed_at=datetime.now(timezone.utc) - timedelta(hours=25))
         self.assertFalse(cache_is_fresh(cached))
+
+    def test_rendered_report_returns_even_when_mongodb_save_times_out(self):
+        result = {
+            "markdown": "# RepoFlow\n\nReport body",
+            "snapshot": {"meta": {}, "issues": [], "pull_requests": [], "branches": []},
+            "health": {},
+            "sections": {},
+        }
+
+        with patch("analyzer.views.get_cached_analysis", return_value=None), \
+             patch("analyzer.views.run_analysis_result", return_value=result), \
+             patch("analyzer.views.save_analysis_cache", side_effect=ServerSelectionTimeoutError("timeout")), \
+             patch("analyzer.views._try_write_pdf_file"):
+            md_report, html_report = _render_markdown_report("https://github.com/django/django")
+
+        self.assertIn("Report body", md_report)
+        self.assertIn("<h1>RepoFlow</h1>", html_report)
 
 
 class StudentReportTests(SimpleTestCase):

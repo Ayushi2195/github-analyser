@@ -75,9 +75,11 @@ def connect_mongo() -> None:
 
     connect(
         host=mongo_uri,
-        serverSelectionTimeoutMS=5000,
-        connectTimeoutMS=5000,
-        socketTimeoutMS=10000,
+        serverSelectionTimeoutMS=30000,
+        connectTimeoutMS=30000,
+        socketTimeoutMS=60000,
+        retryWrites=True,
+        maxPoolSize=10,
     )
     connection = get_connection()
     connection.admin.command("ping")
