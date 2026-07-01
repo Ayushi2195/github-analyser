@@ -30,8 +30,8 @@ from analyzer.mongo_cache import (
 from analyzer.pdf_generator import html_to_pdf
 from .crew.crew import run_analysis_result
 
-CACHE_REPORT_VERSION = 14
-PDF_CACHE_VERSION = 10
+CACHE_REPORT_VERSION = 20
+PDF_CACHE_VERSION = 16
 PDF_STORAGE_DIR = Path(settings.BASE_DIR) / "generated_reports"
 
 # turns stars for a repo , eg:45135 into "45.1k" for better look

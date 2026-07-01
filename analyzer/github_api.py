@@ -8,6 +8,7 @@ import base64
 import os
 import re
 from typing import Any
+from urllib.parse import quote
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -17,7 +18,7 @@ GITHUB_TOKEN = os.environ.get("GITHUB_PERSONAL_ACCESS_TOKEN", "")
 API_PAGE_SIZE = 100
 REPORT_SAMPLE_LIMIT = 50
 BRANCH_DETAIL_LIMIT = 20
-FILE_EVIDENCE_LIMIT = 8
+FILE_EVIDENCE_LIMIT = 14
 DIRECTORY_EVIDENCE_LIMIT = 5
 HEADERS = {
     "Accept": "application/vnd.github+json",
@@ -101,13 +102,21 @@ def fetch_openssf_scorecard(owner: str, repo: str) -> dict[str, Any]:
     return {"available": False, "error": "Unexpected Scorecard response format."}
 
 
-def fetch_osv_vulnerabilities(owner: str, repo: str) -> dict[str, Any]:
+def fetch_osv_vulnerabilities(owner: str, repo: str, commit_sha: str | None = None) -> dict[str, Any]:
     """Fetch known OSV vulnerabilities without failing the main repo analysis."""
     repo_url = f"https://github.com/{owner}/{repo}"
+    if not commit_sha:
+        return {
+            "vulns": [],
+            "available": False,
+            "error": "OSV scan could not be completed.",
+            "query_target": repo_url,
+        }
+    payload = {"commit": commit_sha}
     try:
         response = _session().post(
             "https://api.osv.dev/v1/query",
-            json={"url": repo_url},
+            json=payload,
             headers={"Content-Type": "application/json"},
             timeout=15,
         )
@@ -130,8 +139,140 @@ def fetch_osv_vulnerabilities(owner: str, repo: str) -> dict[str, Any]:
     if isinstance(data, dict):
         data.setdefault("vulns", [])
         data["available"] = True
+        data["query"] = payload
         return data
     return {"vulns": [], "available": False, "error": "OSV scan could not be completed."}
+
+
+def _file_names(files: list[dict[str, Any]]) -> set[str]:
+    names = {item.get("name", "").lower() for item in files}
+    for item in files:
+        for child in item.get("children") or []:
+            if isinstance(child, dict):
+                names.add(child.get("name", "").lower())
+                names.add(child.get("path", "").replace("\\", "/").lower())
+            else:
+                names.add(str(child).lower())
+    return names
+
+
+def _fallback_scorecard(
+    owner: str,
+    repo: str,
+    api_scorecard: dict[str, Any],
+    meta: dict[str, Any],
+    files: list[dict[str, Any]],
+    branches: list[dict[str, Any]],
+    osv_vulnerabilities: dict[str, Any],
+    security_insights: dict[str, Any],
+) -> dict[str, Any]:
+    """Return Scorecard-shaped data when OpenSSF has no precomputed record."""
+    if api_scorecard.get("available") and api_scorecard.get("score") is not None and api_scorecard.get("checks"):
+        return api_scorecard
+
+    names = _file_names(files)
+    protected_count = sum(1 for branch in branches if branch.get("protected"))
+    has_workflows = "workflows" in names or ".github/workflows" in names
+    has_tests = any(name in names for name in ("tests", "test", "__tests__"))
+    has_security_policy = any(
+        bool(security_insights.get(key))
+        for key in ("has_security_md", "has_github_security_md", "has_security_insights")
+    )
+    has_dependency_manifest = any(
+        name in names
+        for name in (
+            "requirements.txt",
+            "pyproject.toml",
+            "package.json",
+            "go.mod",
+            "cargo.toml",
+            "pom.xml",
+            "build.gradle",
+        )
+    )
+    has_vulns = bool((osv_vulnerabilities or {}).get("vulns"))
+    has_license = bool((meta.get("license") or {}).get("spdx_id"))
+    has_description = bool(meta.get("description"))
+
+    checks = [
+        {
+            "name": "Branch-Protection",
+            "score": 10 if protected_count else 4,
+            "reason": (
+                f"{protected_count} sampled branch(es) report protection enabled."
+                if protected_count
+                else "No sampled branch reports GitHub branch protection."
+            ),
+        },
+        {
+            "name": "Security-Policy",
+            "score": 10 if has_security_policy else 3,
+            "reason": (
+                "Security reporting metadata was detected."
+                if has_security_policy
+                else "No SECURITY.md or Security Insights metadata was detected."
+            ),
+        },
+        {
+            "name": "CI-Tests",
+            "score": 10 if has_workflows and has_tests else 6 if has_workflows or has_tests else 3,
+            "reason": (
+                "CI workflow metadata and test directories were detected."
+                if has_workflows and has_tests
+                else "Some CI or test evidence was detected." if has_workflows or has_tests
+                else "No CI workflow or test directory evidence was detected."
+            ),
+        },
+        {
+            "name": "Vulnerabilities",
+            "score": 3 if has_vulns else 10 if osv_vulnerabilities.get("available", True) else 6,
+            "reason": (
+                "OSV returned known vulnerability records for this commit."
+                if has_vulns
+                else "OSV returned no known vulnerabilities for the default branch commit."
+                if osv_vulnerabilities.get("available", True)
+                else "OSV scan was unavailable, so this check is estimated."
+            ),
+        },
+        {
+            "name": "Dependency-Manifest",
+            "score": 8 if has_dependency_manifest else 4,
+            "reason": (
+                "A dependency or build manifest was detected."
+                if has_dependency_manifest
+                else "No common dependency manifest was found in sampled root files."
+            ),
+        },
+        {
+            "name": "License",
+            "score": 10 if has_license else 3,
+            "reason": (
+                f"Repository declares license {meta.get('license', {}).get('spdx_id')}."
+                if has_license
+                else "No repository license was detected."
+            ),
+        },
+        {
+            "name": "Project-Metadata",
+            "score": 8 if has_description else 4,
+            "reason": (
+                "GitHub repository description is documented."
+                if has_description
+                else "GitHub repository description is missing."
+            ),
+        },
+    ]
+    score = round(sum(float(check["score"]) for check in checks) / len(checks), 1)
+    return {
+        "available": True,
+        "score": score,
+        "checks": checks,
+        "repo": {"name": f"github.com/{owner}/{repo}"},
+        "source": "repoflow-fallback",
+        "api_available": False,
+        "api_status_code": api_scorecard.get("status_code"),
+        "date": None,
+    }
 
 
 def _normalize_best_practices_level(project: dict[str, Any]) -> str:
@@ -170,52 +311,105 @@ def _normalize_best_practices_level(project: dict[str, Any]) -> str:
     return ""
 
 
+def _normalize_repo_reference(value: str) -> str:
+    text = str(value or "").strip().lower()
+    text = re.sub(r"^git\+", "", text)
+    text = re.sub(r"^https?://", "", text)
+    text = re.sub(r"^www\.", "", text)
+    text = text.removesuffix(".git")
+    return text.strip("/")
+
+
+def _best_practices_project_matches(project: dict[str, Any], owner: str, repo: str) -> bool:
+    needle = f"github.com/{owner}/{repo}".lower()
+    normalized_needle = _normalize_repo_reference(needle)
+    candidate_fields = (
+        "repo_url",
+        "repository",
+        "repository_url",
+        "source_url",
+        "homepage_url",
+        "url",
+        "html_url",
+        "badge_url",
+        "name",
+    )
+    values = [str(project.get(field) or "") for field in candidate_fields]
+    repo_info = project.get("repo") or project.get("repository_info")
+    if isinstance(repo_info, dict):
+        values.extend(str(value or "") for value in repo_info.values())
+    normalized_values = [_normalize_repo_reference(value) for value in values]
+    return any(
+        normalized_needle in value or value in normalized_needle
+        for value in normalized_values
+        if value
+    )
+
+
 def fetch_best_practices_badge(owner: str, repo: str) -> dict[str, Any]:
     """Fetch OpenSSF Best Practices badge status without failing analysis."""
     repo_url = f"https://github.com/{owner}/{repo}"
     query = f"github.com/{owner}/{repo}"
-    try:
-        response = _session().get(
-            "https://www.bestpractices.dev/projects.json",
-            params={"url": repo_url},
-            timeout=20,
-        )
-    except requests.RequestException as exc:
-        return {"available": False, "found": False, "error": str(exc)}
-
-    if not response.ok:
-        return {
-            "available": False,
-            "found": False,
-            "status_code": response.status_code,
-            "error": response.text[:200],
-        }
-    try:
-        data = response.json()
-    except ValueError as exc:
-        return {"available": False, "found": False, "error": f"Invalid Best Practices response: {exc}"}
-
-    projects = data if isinstance(data, list) else data.get("projects", []) if isinstance(data, dict) else []
-    if not isinstance(projects, list):
-        return {"available": False, "found": False, "error": "Unexpected Best Practices response format."}
-
-    needle = query.lower()
-    for index, project in enumerate(projects):
-        if not isinstance(project, dict):
+    attempts = [
+        {"url": repo_url},
+        {"url": f"{repo_url}.git"},
+        {"pq": query},
+        {"q": query},
+        {"pq": f"{owner}/{repo}"},
+    ]
+    last_error: dict[str, Any] = {}
+    session = _session()
+    for params in attempts:
+        try:
+            response = session.get(
+                "https://www.bestpractices.dev/projects.json",
+                params=params,
+                timeout=20,
+            )
+        except requests.RequestException as exc:
+            last_error = {"error": str(exc)}
             continue
-        project_text = " ".join(
-            str(project.get(field) or "")
-            for field in ("repo_url", "repository", "homepage_url", "url", "html_url", "name")
-        ).lower()
-        if needle not in project_text and not (index == 0 and len(projects) == 1):
+
+        if not response.ok:
+            last_error = {
+                "status_code": response.status_code,
+                "error": response.text[:200],
+            }
             continue
-        level = _normalize_best_practices_level(project)
-        return {
-            "available": True,
-            "found": bool(level),
-            "level": level,
-            "project": project,
-        }
+        try:
+            data = response.json()
+        except ValueError as exc:
+            last_error = {"error": f"Invalid Best Practices response: {exc}"}
+            continue
+
+        projects = data if isinstance(data, list) else data.get("projects", []) if isinstance(data, dict) else []
+        if not isinstance(projects, list):
+            last_error = {"error": "Unexpected Best Practices response format."}
+            continue
+
+        for index, project in enumerate(projects):
+            if not isinstance(project, dict):
+                continue
+            if not _best_practices_project_matches(project, owner, repo) and not (index == 0 and len(projects) == 1):
+                continue
+            level = _normalize_best_practices_level(project)
+            if level:
+                return {
+                    "available": True,
+                    "found": True,
+                    "level": level,
+                    "project": project,
+                    "query": params,
+                }
+            return {
+                "available": True,
+                "found": False,
+                "level": "",
+                "project": project,
+                "query": params,
+            }
+    if last_error:
+        return {"available": False, "found": False, "level": "", **last_error}
     return {"available": True, "found": False, "level": ""}
 
 
@@ -261,6 +455,39 @@ def _content_preview(item: dict) -> str:
     return decoded[:4000]
 
 
+KNOWN_FILE_ANNOTATIONS = {
+    "tests": "Unit and integration tests",
+    "test": "Automated tests",
+    "docs": "Documentation",
+    ".github": "GitHub workflows and community files",
+    "src": "Source code",
+    "lib": "Library code",
+    "api": "API layer",
+    "scripts": "Utility scripts",
+    "requirements.txt": "Python dependencies",
+    "pyproject.toml": "Build configuration and dependencies",
+    "package.json": "Node.js dependencies",
+    "dockerfile": "Container build definition",
+    "docker-compose.yml": "Multi-container setup",
+    "compose.yml": "Multi-container setup",
+    "security.md": "Security vulnerability reporting policy",
+    "contributing.md": "Contribution guidelines",
+    "license": "Project license",
+    "makefile": "Build automation",
+    ".github/workflows": "CI/CD pipelines",
+}
+
+
+def _known_annotation(path: str, name: str) -> str:
+    normalized_path = path.replace("\\", "/").lower()
+    normalized_name = name.lower()
+    return (
+        KNOWN_FILE_ANNOTATIONS.get(normalized_path)
+        or KNOWN_FILE_ANNOTATIONS.get(normalized_name)
+        or ""
+    )
+
+
 def _enrich_root_items(base: str, contents: list[dict]) -> list[dict]:
     files = [
         {
@@ -268,6 +495,10 @@ def _enrich_root_items(base: str, contents: list[dict]) -> list[dict]:
             "path": item.get("path", item.get("name", "")),
             "type": item.get("type", ""),
             "size": item.get("size", 0),
+            "annotation": _known_annotation(
+                item.get("path", item.get("name", "")),
+                item.get("name", ""),
+            ),
         }
         for item in contents
     ]
@@ -277,6 +508,9 @@ def _enrich_root_items(base: str, contents: list[dict]) -> list[dict]:
         "package.json", "tsconfig.json", "go.mod", "cargo.toml", "gemfile",
         "pom.xml", "build.gradle", "dockerfile", "compose.yml", "docker-compose.yml",
         "agents.md", "contributing.md", "architecture.md", "concepts.md",
+        "main.py", "app.py", "server.py", "index.py", "manage.py", "app_factory.py",
+        "config.py", "settings.py", "client.py", "connection.py", "models.py",
+        "app.tsx", "app.jsx", "index.tsx", "index.jsx", "vite.config.ts",
     }
     evidence_files = [
         item for item in contents
@@ -298,11 +532,22 @@ def _enrich_root_items(base: str, contents: list[dict]) -> list[dict]:
         item for item in contents
         if item.get("type") == "dir" and item.get("name", "").lower() in useful_dirs
     ][:DIRECTORY_EVIDENCE_LIMIT]
-    children: dict[str, list[str]] = {}
+    children: dict[str, list[dict[str, str]]] = {}
     for item in directory_items:
         try:
             listing = _get(f"{base}/contents/{item['path']}")
-            children[item["path"]] = [child.get("name", "") for child in listing[:50]] if isinstance(listing, list) else []
+            children[item["path"]] = [
+                {
+                    "name": child.get("name", ""),
+                    "path": child.get("path", child.get("name", "")),
+                    "type": child.get("type", ""),
+                    "annotation": _known_annotation(
+                        child.get("path", child.get("name", "")),
+                        child.get("name", ""),
+                    ),
+                }
+                for child in listing[:50]
+            ] if isinstance(listing, list) else []
         except GitHubAPIError:
             children[item.get("path", "")] = []
 
@@ -340,7 +585,6 @@ def fetch_repo_snapshot(repo_url: str) -> dict[str, Any]:
     )
     branches_raw = _get(f"{base}/branches", {"per_page": API_PAGE_SIZE, "page": 1})
     openssf_scorecard = fetch_openssf_scorecard(owner, repo)
-    osv_vulnerabilities = fetch_osv_vulnerabilities(owner, repo)
     best_practices_badge = fetch_best_practices_badge(owner, repo)
     open_issues_total = _search_total_count(f"repo:{owner}/{repo} is:issue is:open")
     open_prs_total = _search_total_count(f"repo:{owner}/{repo} is:pr is:open")
@@ -383,10 +627,31 @@ def fetch_repo_snapshot(repo_url: str) -> dict[str, Any]:
         {
             "name": branch["name"],
             "protected": branch.get("protected", False),
+            "commit_sha": (branch.get("commit") or {}).get("sha"),
             "last_commit_date": None,
         }
         for branch in (branches_raw if isinstance(branches_raw, list) else [])
     ]
+    default_branch_name = meta.get("default_branch")
+    default_branch = next((branch for branch in branches if branch.get("name") == default_branch_name), None)
+    default_commit_sha = (default_branch or {}).get("commit_sha")
+    if default_branch_name and not default_commit_sha:
+        try:
+            default_branch_detail = _get(f"{base}/branches/{quote(default_branch_name, safe='')}")
+            default_commit_sha = (default_branch_detail.get("commit") or {}).get("sha")
+        except GitHubAPIError:
+            default_commit_sha = None
+    osv_vulnerabilities = fetch_osv_vulnerabilities(owner, repo, default_commit_sha)
+    openssf_scorecard = _fallback_scorecard(
+        owner,
+        repo,
+        openssf_scorecard,
+        meta,
+        files,
+        branches,
+        osv_vulnerabilities,
+        security_insights,
+    )
     for index, branch in enumerate(branches):
         if index >= BRANCH_DETAIL_LIMIT:
             break

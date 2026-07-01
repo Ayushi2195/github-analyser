@@ -290,15 +290,19 @@
                 <div class="mt-8 space-y-3 text-left max-w-sm mx-auto">
                     <div id="step1" class="flex items-center gap-3 rounded-xl px-4 py-3 loading-shimmer text-sm font-medium text-slate-600">
                         <span class="step-icon h-6 w-6 rounded-full bg-violet-200 flex items-center justify-center text-xs">1</span>
-                        Fetching GitHub data…
+                        Fetching GitHub data...
                     </div>
                     <div id="step2" class="flex items-center gap-3 rounded-xl px-4 py-3 bg-slate-50 text-sm font-medium text-slate-400">
                         <span class="step-icon h-6 w-6 rounded-full bg-slate-200 flex items-center justify-center text-xs">2</span>
-                        Running AI structure agent…
+                        Running OpenSSF security analysis...
                     </div>
                     <div id="step3" class="flex items-center gap-3 rounded-xl px-4 py-3 bg-slate-50 text-sm font-medium text-slate-400">
                         <span class="step-icon h-6 w-6 rounded-full bg-slate-200 flex items-center justify-center text-xs">3</span>
-                        Building your report…
+                        Running AI structure agent...
+                    </div>
+                    <div id="step4" class="flex items-center gap-3 rounded-xl px-4 py-3 bg-slate-50 text-sm font-medium text-slate-400">
+                        <span class="step-icon h-6 w-6 rounded-full bg-slate-200 flex items-center justify-center text-xs">4</span>
+                        Building your report...
                     </div>
                 </div>
             </div>
@@ -433,8 +437,8 @@
         document.getElementById('analyzeBtnText').textContent = 'Analyzing…';
         document.getElementById('loadingPanel').scrollIntoView({ behavior: 'smooth', block: 'center' });
 
-        const steps = ['step1', 'step2', 'step3'];
-        const delays = [0, 12000, 35000];
+        const steps = ['step1', 'step2', 'step3', 'step4'];
+        const delays = [0, 10000, 26000, 42000];
         delays.forEach((delay, i) => {
             setTimeout(() => {
                 steps.forEach((id, j) => {

@@ -132,7 +132,11 @@ def _purpose_for_item(item: dict) -> str:
     name = item.get("name", "")
     lower = name.lower()
     children = item.get("children") or []
-    child_hint = f" Visible entries include {', '.join(f'`{child}`' for child in children[:5])}." if children else ""
+    child_names = [
+        child.get("name", "") if isinstance(child, dict) else str(child)
+        for child in children[:5]
+    ]
+    child_hint = f" Visible entries include {', '.join(f'`{child}`' for child in child_names if child)}." if child_names else ""
     if lower == "readme.md":
         return "Primary project introduction, setup instructions, and usage guide. Start here before reading code."
     if lower in TECH_EVIDENCE:
@@ -156,88 +160,55 @@ def _purpose_for_item(item: dict) -> str:
     return "Supporting root item. RepoFlow has insufficient content evidence to claim a more specific purpose."
 
 
-TREE_COMMENT_OVERRIDES = {
-    "api": "FastAPI Backend",
-    "agents": "AI agent implementations",
-    "auth": "Authentication and user management",
-    "routes": "API endpoints",
-    "loaders": "Data loaders and connectors",
-    "app": "Frontend or application source",
-    "src": "Main source code",
-    "components": "UI components",
-    "contexts": "State management",
-    "services": "API client implementations",
-    "lib": "Reusable library code",
-    "core": "Core application logic",
-    "backend": "Backend implementation",
-    "frontend": "Frontend implementation",
-    "tests": "Unit and integration tests",
-    "test": "Automated tests",
-    "docs": "Documentation",
-    ".github": "GitHub workflows and community files",
-    "readme.md": "Project overview and setup instructions",
-    "contributing.md": "Contribution rules for new developers",
-    "security.md": "Security vulnerability reporting policy",
-    "package.json": "Node.js scripts and dependencies",
-    "pyproject.toml": "Python project metadata and dependencies",
-    "requirements.txt": "Python dependency list",
-    "go.mod": "Go module definition",
-    "cargo.toml": "Rust crate metadata",
-    "dockerfile": "Container build instructions",
-    "app_factory.py": "Application initialization",
-    "config.py": "Configuration",
-    "index.py": "Server entry point",
-    "main.py": "Application entry point",
-    "client.py": "Client implementation",
-    "connection.py": "Connection management",
-    "models.py": "Data models",
-    "app.tsx": "Main frontend entry point",
-}
+def _child_name(child: Any) -> str:
+    return child.get("name", "") if isinstance(child, dict) else str(child)
 
 
-def _tree_comment(name: str, item_type: str = "") -> str:
-    lower = name.lower()
-    if lower in TREE_COMMENT_OVERRIDES:
-        return TREE_COMMENT_OVERRIDES[lower]
-    return ""
+def _key_item_sort(item: dict[str, Any]) -> tuple[int, str]:
+    lower = item.get("name", "").lower()
+    priority = {
+        "readme.md": 0,
+        "pyproject.toml": 1,
+        "requirements.txt": 1,
+        "package.json": 1,
+        "go.mod": 1,
+        "cargo.toml": 1,
+        "src": 2,
+        "app": 2,
+        "api": 2,
+        "lib": 2,
+        "core": 2,
+        "tests": 3,
+        "test": 3,
+        "docs": 4,
+        ".github": 5,
+        "security.md": 6,
+        "contributing.md": 6,
+        "license": 6,
+        "dockerfile": 7,
+        "docker-compose.yml": 7,
+        "compose.yml": 7,
+    }
+    return (priority.get(lower, 20), lower)
 
 
-def _format_tree_line(prefix: str, connector: str, name: str, comment: str) -> str:
-    label = f"{prefix}{connector} {name}"
-    if not comment:
-        return label
-    return f"{label:<36} # {comment}"
-
-
-def _repository_tree(snapshot: dict[str, Any]) -> str:
-    meta = snapshot.get("meta", {})
-    repo_name = meta.get("full_name") or f"{snapshot.get('owner', '')}/{snapshot.get('repo', '')}".strip("/")
+def _key_files_and_folders(snapshot: dict[str, Any]) -> str:
     files = sorted(
         snapshot.get("files", []),
-        key=lambda item: (item.get("type") != "dir", item.get("name", "").lower()),
+        key=_key_item_sort,
     )
-    selected = files[:18]
-    lines = [f"{repo_name}/"]
-    for index, item in enumerate(selected):
+    selected = files[:16]
+    if not selected:
+        return "- No root files were returned by the GitHub API."
+
+    lines = []
+    for item in selected:
         name = item.get("name", "")
         if not name:
             continue
-        is_last = index == len(selected) - 1
-        connector = "└──" if is_last else "├──"
-        display_name = f"{name}/" if item.get("type") == "dir" else name
-        lines.append(_format_tree_line("", connector, display_name, _tree_comment(name, item.get("type", ""))))
-        children = item.get("children") or []
-        if item.get("type") == "dir" and children:
-            child_prefix = "    " if is_last else "│   "
-            for child_index, child in enumerate(children[:5]):
-                child_is_last = child_index == min(len(children), 5) - 1
-                child_connector = "└──" if child_is_last else "├──"
-                child_display = f"{child}/" if "." not in child else child
-                lines.append(_format_tree_line(child_prefix, child_connector, child_display, _tree_comment(child)))
-            if len(children) > 5:
-                lines.append(f"{child_prefix}└── ... {len(children) - 5} more items")
-    if not selected:
-        lines.append("└── No root files were returned by the GitHub API")
+        item_type = "dir" if item.get("type") == "dir" else "file"
+        purpose = _purpose_for_item(item)
+        lines.append(f"- **`{name}` ({item_type}):** {purpose}")
     return "\n".join(lines)
 
 
@@ -249,7 +220,7 @@ def _has_root_file(snapshot: dict[str, Any], *names: str) -> bool:
 def _has_ci_config(snapshot: dict[str, Any]) -> bool:
     files = _file_map(snapshot)
     github = files.get(".github") or {}
-    children = {child.lower() for child in github.get("children") or []}
+    children = {_child_name(child).lower() for child in github.get("children") or []}
     root_names = {item.get("name", "").lower() for item in snapshot.get("files", [])}
     return (
         "workflows" in children
@@ -347,7 +318,7 @@ def build_structure_section(snapshot: dict[str, Any], ai_overview: str = "") -> 
         clean_ai = ""
 
     lines = [
-        '<h2 class="report-heading report-heading-green">Repository Overview</h2>',
+        '<h2 class="report-heading report-heading-yellow">Repository Overview</h2>',
         "",
         "### What This Project Is",
         "",
@@ -358,11 +329,9 @@ def build_structure_section(snapshot: dict[str, Any], ai_overview: str = "") -> 
 
     lines.extend([
         "",
-        "### Structure",
+        "### Key Files and Folders",
         "",
-        "```text",
-        _repository_tree(snapshot),
-        "```",
+        _key_files_and_folders(snapshot),
     ])
 
     lines.extend(["", "### Verified Tech Stack", ""])
@@ -598,11 +567,21 @@ def _plain_scorecard_reason(name: str, score: Any, reason: str) -> str:
 
 def _best_practices_badge_section(snapshot: dict[str, Any]) -> str:
     badge = snapshot.get("best_practices_badge") or {}
+
+    def badge_medal(level: str, label: str) -> str:
+        return (
+            f'<div class="badge-medal badge-{escape(level)}">'
+            '<span class="badge-seal">OpenSSF</span>'
+            f'<strong>{escape(label)}</strong>'
+            '<small>Best Practices</small>'
+            '</div>'
+        )
+
     if badge.get("found") and badge.get("level"):
         level = str(badge["level"]).strip().lower()
         label = {"passing": "Passing", "silver": "Silver", "gold": "Gold"}.get(level, level.title())
         return "\n".join([
-            "### OpenSSF Best Practices Badge",
+            '<h2 class="report-heading report-heading-green">OpenSSF Best Practices Badge</h2>',
             "",
             _openSSF_intro(
                 "What this badge means",
@@ -612,7 +591,7 @@ def _best_practices_badge_section(snapshot: dict[str, Any]) -> str:
             ),
             "",
             '<div class="badge-showcase">',
-            f'<div class="badge-medal badge-{escape(level)}">{escape(label)}</div>',
+            badge_medal(level, label),
             '<div>',
             '<strong>OpenSSF Best Practices badge detected</strong>',
             '<p>This project has completed OpenSSF Best Practices criteria for open-source quality and security hygiene.</p>',
@@ -633,7 +612,7 @@ def _best_practices_badge_section(snapshot: dict[str, Any]) -> str:
             numeric_score = 0
         if numeric_score >= 5:
             return "\n".join([
-                "### OpenSSF Best Practices Badge",
+                '<h2 class="report-heading report-heading-green">OpenSSF Best Practices Badge</h2>',
                 "",
                 _openSSF_intro(
                     "What this badge means",
@@ -643,7 +622,7 @@ def _best_practices_badge_section(snapshot: dict[str, Any]) -> str:
                 ),
                 "",
                 '<div class="badge-showcase">',
-                '<div class="badge-medal badge-passing">Passing</div>',
+                badge_medal("passing", "Passing"),
                 '<div>',
                 '<strong>Best Practices signal found in Scorecard</strong>',
                 '<p>The direct badge API did not return a project, but Scorecard reports the CII-Best-Practices check as passing.</p>',
@@ -651,7 +630,7 @@ def _best_practices_badge_section(snapshot: dict[str, Any]) -> str:
                 '</div>',
             ])
         return "\n".join([
-            "### OpenSSF Best Practices Badge",
+            '<h2 class="report-heading report-heading-green">OpenSSF Best Practices Badge</h2>',
             "",
             _openSSF_intro(
                 "What this badge means",
@@ -668,7 +647,7 @@ def _best_practices_badge_section(snapshot: dict[str, Any]) -> str:
             '</div>',
         ])
     return "\n".join([
-        "### OpenSSF Best Practices Badge",
+        '<h2 class="report-heading report-heading-green">OpenSSF Best Practices Badge</h2>',
         "",
         _openSSF_intro(
             "What this badge means",
@@ -704,7 +683,7 @@ def build_security_insights_section(snapshot: dict[str, Any]) -> str:
         )
 
     lines = [
-        "### Security Insights",
+        '<h2 class="report-heading report-heading-green">Security Insights</h2>',
         "",
         _openSSF_intro(
             "What this checks",
@@ -735,8 +714,8 @@ def build_security_section(snapshot: dict[str, Any], security_summary: str = "")
             message = (
                 "OpenSSF Scorecard scans a repository for common security and maintenance signals like branch protection, "
                 "dependency pinning, and release practices. The scan matters because it gives a fast, standardized view of "
-                "how the project handles supply-chain and maintenance hygiene. This repository may not be in the OpenSSF database yet, "
-                "so the tool could not return a scorecard result."
+                "how the project handles supply-chain and maintenance hygiene. OpenSSF Scorecard data not available — this repository "
+                "may not be in the OpenSSF database yet, so the tool could not return a scorecard result."
             )
         else:
             message = (
@@ -759,6 +738,7 @@ def build_security_section(snapshot: dict[str, Any], security_summary: str = "")
     date = scorecard.get("date")
     repo = scorecard.get("repo", {}).get("name") if isinstance(scorecard.get("repo"), dict) else None
     checks = scorecard.get("checks") or []
+    is_fallback = scorecard.get("source") == "repoflow-fallback"
     lines = [
         '<h2 class="report-heading report-heading-green">OpenSSF Security Scorecard</h2>',
         "",
@@ -777,7 +757,7 @@ def build_security_section(snapshot: dict[str, Any], security_summary: str = "")
         f'<div class="scorecard-score"><strong>{overall if overall is not None else "?"}/10</strong></div>',
         '<div>',
         '<strong>OpenSSF Scorecard</strong>',
-        '<p>Automated security posture checks from the OpenSSF Scorecard service.</p>',
+        '<p>Official OpenSSF Scorecard result.</p>' if not is_fallback else '<p>OpenSSF API had no record, so RepoFlow generated deterministic Scorecard-style checks from GitHub and OSV data.</p>',
         '</div>',
         '</div>',
     ]
@@ -832,13 +812,13 @@ def build_vulnerabilities_section(snapshot: dict[str, Any]) -> str:
     osv_data = snapshot.get("osv_vulnerabilities") or {}
     vulns = osv_data.get("vulns") or []
     lines = [
-        '<h2 class="report-heading report-heading-yellow">OSV Vulnerability Scan</h2>',
+        '<h2 class="report-heading report-heading-green">OSV Vulnerability Scan</h2>',
         "",
         _openSSF_intro(
             "What OSV is",
             "OSV is a vulnerability database that tracks known security issues affecting open source projects and packages. "
             "It matters because it gives maintainers and contributors a quick way to check whether a repository has public known vulnerabilities. "
-            "A clean result means OSV did not return a known issue for this repository URL at the time of the scan."
+            "A clean result means OSV did not return a known issue for the repository's default branch commit at the time of the scan."
         ),
         "",
     ]
@@ -856,7 +836,7 @@ def build_vulnerabilities_section(snapshot: dict[str, Any]) -> str:
                 '<div class="security-card security-card-good">'
                 '<span class="security-status security-status-good">Clear</span>'
                 '<strong>No known vulnerabilities found in the OSV database — this repository has a clean vulnerability record.</strong>'
-                '<p>OSV did not return known vulnerability records for this repository URL, which means no public vulnerability matches were found during the scan.</p>'
+                '<p>OSV did not return known vulnerability records for the default branch commit, which means no public vulnerability matches were found during the scan.</p>'
                 '</div>'
             )
         return "\n".join(lines)
@@ -998,9 +978,7 @@ def build_good_first_issues_section(snapshot: dict[str, Any]) -> str:
     sampled = stats.get("issues_sampled", len(issues))
     candidates = _beginner_issue_candidates(issues, limit=5)
     lines = [
-        '<h2 class="report-heading report-heading-green">Good First Issues</h2>',
-        "",
-        f"RepoFlow sampled **{sampled}** of **{total}** open GitHub issues and ranked beginner-friendly tasks using labels, scope clues, assignee status, comments, and concrete file references.",
+        '<h2 class="report-heading report-heading-yellow">Good First Issues</h2>',
         "",
     ]
     if not issues:
@@ -1040,7 +1018,7 @@ def build_branches_section(snapshot: dict[str, Any]) -> str:
     prs = snapshot.get("pull_requests", [])
     pr_targets = Counter(pr.get("base") or "unknown" for pr in prs)
     pr_sources = Counter(pr.get("head") or "unknown" for pr in prs)
-    lines = ['<h2 class="report-heading report-heading-green">Branches</h2>', ""]
+    lines = ['<h2 class="report-heading report-heading-yellow">Branches</h2>', ""]
 
     lines.append("### Real Numbers Summary")
     lines.append("")

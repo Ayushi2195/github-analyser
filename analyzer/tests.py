@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 from django.test import SimpleTestCase
 
-from analyzer.github_api import GitHubAPIError, fetch_best_practices_badge, fetch_osv_vulnerabilities, parse_repo_url
+from analyzer.github_api import GitHubAPIError, fetch_best_practices_badge, fetch_osv_vulnerabilities, fetch_repo_snapshot, parse_repo_url
 from analyzer.mongo_cache import cache_is_fresh
 from analyzer.report_builder import (
     build_branch_snapshot,
@@ -48,7 +48,38 @@ class GitHubURLTests(SimpleTestCase):
         self.assertEqual(calls[0][1], {"url": "https://github.com/django/django"})
         self.assertNotIn("pq", calls[0][1])
 
-    def test_osv_uses_repo_url_body_and_15_second_timeout(self):
+    def test_best_practices_tries_fallback_queries_until_badge_found(self):
+        calls = []
+
+        class Response:
+            ok = True
+
+            def __init__(self, payload):
+                self.payload = payload
+
+            def json(self):
+                return self.payload
+
+        class Session:
+            def get(self, url, params=None, timeout=None):
+                calls.append(params)
+                if len(calls) < 3:
+                    return Response([])
+                return Response([{
+                    "repo_url": "https://github.com/django/django.git",
+                    "badge_level": "silver",
+                }])
+
+        with patch("analyzer.github_api._session", return_value=Session()):
+            badge = fetch_best_practices_badge("django", "django")
+
+        self.assertEqual(calls[0], {"url": "https://github.com/django/django"})
+        self.assertEqual(calls[1], {"url": "https://github.com/django/django.git"})
+        self.assertEqual(calls[2], {"pq": "github.com/django/django"})
+        self.assertTrue(badge["found"])
+        self.assertEqual(badge["level"], "silver")
+
+    def test_osv_uses_commit_body_and_15_second_timeout(self):
         calls = []
 
         class Response:
@@ -64,11 +95,143 @@ class GitHubURLTests(SimpleTestCase):
                 return Response()
 
         with patch("analyzer.github_api._session", return_value=Session()):
-            fetch_osv_vulnerabilities("django", "django")
+            fetch_osv_vulnerabilities("django", "django", "abc123")
 
         self.assertEqual(calls[0][0], "https://api.osv.dev/v1/query")
-        self.assertEqual(calls[0][1], {"url": "https://github.com/django/django"})
+        self.assertEqual(calls[0][1], {"commit": "abc123"})
         self.assertEqual(calls[0][2], 15)
+
+    def test_snapshot_queries_osv_with_default_branch_sha(self):
+        calls = []
+
+        def fake_get(path, params=None):
+            if path == "/repos/django/django":
+                return {
+                    "name": "django",
+                    "full_name": "django/django",
+                    "default_branch": "main",
+                    "license": {},
+                }
+            if path == "/repos/django/django/contents/":
+                return []
+            if path == "/repos/django/django/issues":
+                return []
+            if path == "/repos/django/django/pulls":
+                return []
+            if path == "/repos/django/django/branches":
+                return [
+                    {"name": "main", "protected": True, "commit": {"sha": "main-sha"}},
+                    {"name": "dev", "protected": False, "commit": {"sha": "dev-sha"}},
+                ]
+            if path == "/repos/django/django/commits/main-sha":
+                return {"commit": {"committer": {"date": "2026-06-01T00:00:00Z"}}}
+            if path == "/repos/django/django/commits/dev-sha":
+                return {"commit": {"committer": {"date": "2026-06-02T00:00:00Z"}}}
+            return {}
+
+        def fake_osv(owner, repo, commit_sha=None):
+            calls.append((owner, repo, commit_sha))
+            return {"available": True, "vulns": []}
+
+        with patch("analyzer.github_api._snapshot_cache", {}), \
+             patch("analyzer.github_api._get", side_effect=fake_get), \
+             patch("analyzer.github_api.fetch_openssf_scorecard", return_value={"available": False}), \
+             patch("analyzer.github_api.fetch_best_practices_badge", return_value={"found": False}), \
+             patch("analyzer.github_api.fetch_security_insights", return_value={}), \
+             patch("analyzer.github_api._search_total_count", return_value=0), \
+             patch("analyzer.github_api.fetch_osv_vulnerabilities", side_effect=fake_osv):
+            fetch_repo_snapshot("https://github.com/django/django")
+
+        self.assertEqual(calls, [("django", "django", "main-sha")])
+
+    def test_snapshot_builds_scorecard_fallback_when_api_missing(self):
+        def fake_get(path, params=None):
+            if path == "/repos/django/django":
+                return {
+                    "name": "django",
+                    "full_name": "django/django",
+                    "description": "A framework",
+                    "default_branch": "main",
+                    "license": {"spdx_id": "BSD-3-Clause"},
+                }
+            if path == "/repos/django/django/contents/":
+                return [
+                    {"name": ".github", "path": ".github", "type": "dir"},
+                    {"name": "tests", "path": "tests", "type": "dir"},
+                    {"name": "pyproject.toml", "path": "pyproject.toml", "type": "file"},
+                    {"name": "SECURITY.md", "path": "SECURITY.md", "type": "file"},
+                ]
+            if path == "/repos/django/django/contents/.github":
+                return [{"name": "workflows", "path": ".github/workflows", "type": "dir"}]
+            if path == "/repos/django/django/contents/tests":
+                return []
+            if path == "/repos/django/django/issues":
+                return []
+            if path == "/repos/django/django/pulls":
+                return []
+            if path == "/repos/django/django/branches":
+                return [{"name": "main", "protected": True, "commit": {"sha": "main-sha"}}]
+            if path == "/repos/django/django/commits/main-sha":
+                return {"commit": {"committer": {"date": "2026-06-01T00:00:00Z"}}}
+            return {}
+
+        with patch("analyzer.github_api._snapshot_cache", {}), \
+             patch("analyzer.github_api._get", side_effect=fake_get), \
+             patch("analyzer.github_api.fetch_openssf_scorecard", return_value={"available": False, "status_code": 404}), \
+             patch("analyzer.github_api.fetch_best_practices_badge", return_value={"found": False}), \
+             patch("analyzer.github_api.fetch_security_insights", return_value={"has_security_md": True}), \
+             patch("analyzer.github_api._search_total_count", return_value=0), \
+             patch("analyzer.github_api.fetch_osv_vulnerabilities", return_value={"available": True, "vulns": []}):
+            snapshot = fetch_repo_snapshot("https://github.com/django/django")
+
+        scorecard = snapshot["openssf_scorecard"]
+        self.assertTrue(scorecard["available"])
+        self.assertIsInstance(scorecard["score"], float)
+        self.assertGreater(len(scorecard["checks"]), 0)
+        self.assertEqual(scorecard["source"], "repoflow-fallback")
+
+    def test_snapshot_fetches_default_branch_sha_when_not_sampled(self):
+        paths = []
+        calls = []
+
+        def fake_get(path, params=None):
+            paths.append(path)
+            if path == "/repos/django/django":
+                return {
+                    "name": "django",
+                    "full_name": "django/django",
+                    "default_branch": "release/stable",
+                    "license": {},
+                }
+            if path == "/repos/django/django/contents/":
+                return []
+            if path == "/repos/django/django/issues":
+                return []
+            if path == "/repos/django/django/pulls":
+                return []
+            if path == "/repos/django/django/branches":
+                return [{"name": "dev", "protected": False, "commit": {"sha": "dev-sha"}}]
+            if path == "/repos/django/django/branches/release%2Fstable":
+                return {"name": "release/stable", "commit": {"sha": "stable-sha"}}
+            if path == "/repos/django/django/commits/dev-sha":
+                return {"commit": {"committer": {"date": "2026-06-02T00:00:00Z"}}}
+            return {}
+
+        def fake_osv(owner, repo, commit_sha=None):
+            calls.append((owner, repo, commit_sha))
+            return {"available": True, "vulns": []}
+
+        with patch("analyzer.github_api._snapshot_cache", {}), \
+             patch("analyzer.github_api._get", side_effect=fake_get), \
+             patch("analyzer.github_api.fetch_openssf_scorecard", return_value={"available": False}), \
+             patch("analyzer.github_api.fetch_best_practices_badge", return_value={"found": False}), \
+             patch("analyzer.github_api.fetch_security_insights", return_value={}), \
+             patch("analyzer.github_api._search_total_count", return_value=0), \
+             patch("analyzer.github_api.fetch_osv_vulnerabilities", side_effect=fake_osv):
+            fetch_repo_snapshot("https://github.com/django/django")
+
+        self.assertIn("/repos/django/django/branches/release%2Fstable", paths)
+        self.assertEqual(calls, [("django", "django", "stable-sha")])
 
 
 class AnalysisCacheTests(SimpleTestCase):
@@ -99,12 +262,81 @@ class StudentReportTests(SimpleTestCase):
             ],
         }
         report = build_structure_section(snapshot, "可能 related to something")
-        self.assertIn("```text", report)
-        self.assertIn("student/demo/", report)
+        self.assertIn("### Key Files and Folders", report)
+        self.assertIn("<strong>student/demo</strong>", report)
+        self.assertIn("**`README.md` (file):**", report)
         self.assertIn("Django web framework", report)
         self.assertIn("Verified Tech Stack", report)
+        self.assertNotIn("```text", report)
+        self.assertNotIn("├──", report)
         self.assertNotIn("Repository root item", report)
         self.assertNotIn("可能", report)
+
+    def test_structure_tree_uses_snapshot_annotations(self):
+        snapshot = {
+            "repo": "demo",
+            "meta": {"full_name": "student/demo", "language": "Python", "default_branch": "main"},
+            "files": [
+                {
+                    "name": "api",
+                    "path": "api",
+                    "type": "dir",
+                    "annotation": "API layer",
+                    "children": [
+                        {
+                            "name": "routes",
+                            "path": "api/routes",
+                            "type": "dir",
+                            "annotation": "API endpoints",
+                        }
+                    ],
+                },
+                {
+                    "name": "requirements.txt",
+                    "path": "requirements.txt",
+                    "type": "file",
+                    "annotation": "Python dependencies",
+                    "children": [],
+                },
+            ],
+        }
+        report = build_structure_section(snapshot, "")
+        self.assertIn("**`api` (dir):**", report)
+        self.assertIn("Visible entries include `routes`", report)
+        self.assertIn("**`requirements.txt` (file):** Python dependency list.", report)
+
+    def test_structure_tree_uses_readme_and_source_context(self):
+        snapshot = {
+            "repo": "demo",
+            "meta": {
+                "full_name": "student/demo",
+                "language": "Python",
+                "description": "FastAPI service with React dashboard",
+                "default_branch": "main",
+            },
+            "files": [
+                {
+                    "name": "README.md",
+                    "path": "README.md",
+                    "type": "file",
+                    "content_preview": "FastAPI backend with a React Vite frontend.",
+                    "children": [],
+                },
+                {"name": "api", "path": "api", "type": "dir", "children": []},
+                {
+                    "name": "app",
+                    "path": "app",
+                    "type": "dir",
+                    "children": [
+                        {"name": "components", "path": "app/components", "type": "dir"},
+                    ],
+                },
+            ],
+        }
+        report = build_structure_section(snapshot, "")
+        self.assertIn("**`api` (dir):**", report)
+        self.assertIn("**`app` (dir):**", report)
+        self.assertNotIn("├──", report)
 
     def test_beginner_issue_has_reason_and_first_step(self):
         snapshot = {
@@ -123,6 +355,16 @@ class StudentReportTests(SimpleTestCase):
         report = build_good_first_issues_section(snapshot)
         self.assertIn("Estimated difficulty", report)
         self.assertIn("documentation-only edit", report)
+        self.assertNotIn("RepoFlow sampled", report)
+
+    def test_zero_issues_only_shows_external_tracker_message(self):
+        snapshot = {
+            "issues": [],
+            "stats": {"open_issues_total": 0, "issues_sampled": 0},
+        }
+        report = build_good_first_issues_section(snapshot)
+        self.assertIn("No open GitHub issues found", report)
+        self.assertNotIn("RepoFlow sampled **0** of **0**", report)
 
     def test_branch_guidance_uses_source_pr_and_commit_age(self):
         snapshot = {
