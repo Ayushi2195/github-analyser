@@ -486,11 +486,15 @@ def build_recommendations_section(snapshot: dict[str, Any]) -> str:
 
     low_checks = []
     for check in scorecard.get("checks") or []:
-        try:
-            score = float(check.get("score"))
-        except (TypeError, ValueError):
-            continue
-        if score < 5:
+        name = check.get("name") or "Scorecard check"
+        score = check.get("score")
+        reason = str(check.get("reason") or "")
+        info = _check_status_info(str(name), score, reason)
+        if info:
+            should_prioritize = info.get("tone") == "bad" and str(info.get("label", "")).upper() in {"NEEDS ATTENTION", "FAIL"}
+        else:
+            should_prioritize = _scorecard_indicator(score) == "Fail"
+        if should_prioritize:
             low_checks.append(check.get("name") or "Scorecard check")
     if low_checks:
         recommendations.append("Prioritize low OpenSSF Scorecard checks: " + ", ".join(low_checks[:4]) + ".")

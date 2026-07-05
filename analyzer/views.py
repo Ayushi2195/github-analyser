@@ -28,7 +28,7 @@ from analyzer.mongo_cache import (
 )
 from .crew.crew import run_analysis_result
 
-CACHE_REPORT_VERSION = 21
+CACHE_REPORT_VERSION = 22
 
 # turns stars for a repo , eg:45135 into "45.1k" for better look
 def _format_count(value: int) -> str:
@@ -395,11 +395,9 @@ def _pdf_filename(repo_url: str) -> str:
         owner, repo = parse_repo_url(repo_url)
         safe_owner = re.sub(r"[^\w\-]", "", owner)[:40]
         safe_repo = re.sub(r"[^\w\-]", "", repo)[:40]
-        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        return f"repoflow-{safe_owner}-{safe_repo}-{stamp}.pdf"
+        return f"repoflow-{safe_owner}-{safe_repo}-report.pdf"
     except GitHubAPIError:
-        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        return f"repoflow-report-{stamp}.pdf"
+        return "repoflow-report.pdf"
 
 
 def _browserless_pdf_bytes(html: str) -> bytes:
@@ -437,9 +435,9 @@ def _browserless_pdf_bytes(html: str) -> bytes:
     return response.content
 
 
-def _pdf_bytes_response(pdf_bytes: bytes) -> HttpResponse:
+def _pdf_bytes_response(pdf_bytes: bytes, repo_url: str) -> HttpResponse:
     response = HttpResponse(pdf_bytes, content_type="application/pdf")
-    response["Content-Disposition"] = 'attachment; filename="repoflow-report.pdf"'
+    response["Content-Disposition"] = f'attachment; filename="{_pdf_filename(repo_url)}"'
     response["Content-Length"] = str(len(pdf_bytes))
     response["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     response["Pragma"] = "no-cache"
@@ -551,4 +549,4 @@ def download_pdf(request):
             content_type="text/plain; charset=utf-8",
         )
 
-    return _pdf_bytes_response(pdf_bytes)
+    return _pdf_bytes_response(pdf_bytes, repo_url)
