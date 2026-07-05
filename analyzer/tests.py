@@ -3,7 +3,6 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.test import RequestFactory, SimpleTestCase
-from pymongo.errors import ServerSelectionTimeoutError
 
 from analyzer.github_api import GitHubAPIError, fetch_best_practices_badge, fetch_osv_vulnerabilities, fetch_repo_snapshot, parse_repo_url
 from analyzer.mongo_cache import cache_is_fresh, connect_mongo
@@ -272,7 +271,7 @@ class AnalysisCacheTests(SimpleTestCase):
         cached = SimpleNamespace(analyzed_at=datetime.now(timezone.utc) - timedelta(hours=25))
         self.assertFalse(cache_is_fresh(cached))
 
-    def test_rendered_report_returns_even_when_mongodb_save_times_out(self):
+    def test_rendered_report_does_not_save_user_analysis_to_mongodb(self):
         result = {
             "markdown": "# RepoFlow\n\nReport body",
             "snapshot": {"meta": {}, "issues": [], "pull_requests": [], "branches": []},
@@ -281,8 +280,7 @@ class AnalysisCacheTests(SimpleTestCase):
         }
 
         with patch("analyzer.views.get_cached_analysis", return_value=None), \
-             patch("analyzer.views.run_analysis_result", return_value=result), \
-             patch("analyzer.views.save_analysis_cache", side_effect=ServerSelectionTimeoutError("timeout")):
+             patch("analyzer.views.run_analysis_result", return_value=result):
             md_report, html_report = _render_markdown_report("https://github.com/django/django")
 
         self.assertIn("Report body", md_report)
