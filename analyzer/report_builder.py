@@ -128,6 +128,36 @@ def _detected_technologies(snapshot: dict[str, Any]) -> list[tuple[str, str]]:
     return detected
 
 
+def _readme_overview(snapshot: dict[str, Any]) -> str:
+    readme = _file_map(snapshot).get("readme.md") or {}
+    text = readme.get("content_preview") or ""
+    if not text:
+        return ""
+    text = re.sub(r"```.*?```", " ", text, flags=re.DOTALL)
+    text = re.sub(r"<!--.*?-->", " ", text, flags=re.DOTALL)
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = re.sub(r"!\[[^\]]*\]\([^)]+\)", " ", text)
+    text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)
+    paragraphs = []
+    for block in re.split(r"\n\s*\n", text):
+        block = re.sub(r"^#+\s*", "", block.strip())
+        block = re.sub(r"\s+", " ", block)
+        lowered = block.lower()
+        if len(block) < 80:
+            continue
+        if any(marker in lowered for marker in ("build status", "badge", "license:", "downloads")):
+            continue
+        paragraphs.append(block)
+        if len(paragraphs) >= 2:
+            break
+    if not paragraphs:
+        return ""
+    summary = " ".join(paragraphs)
+    sentences = re.split(r"(?<=[.!?])\s+", summary)
+    summary = " ".join(sentences[:4]).strip()
+    return summary[:700].rstrip()
+
+
 def _purpose_for_item(item: dict) -> str:
     name = item.get("name", "")
     lower = name.lower()
@@ -329,11 +359,14 @@ def build_structure_section(snapshot: dict[str, Any], ai_overview: str = "") -> 
     files = snapshot.get("files", [])
     technologies = _detected_technologies(snapshot)
     repo_display = meta.get("full_name") or snapshot.get("repo") or "This repository"
+    readme_summary = _readme_overview(snapshot)
     overview = (
         f"<strong>{escape(str(repo_display))}</strong> is described by its maintainers as: "
         f"{escape(str(meta.get('description') or 'No GitHub description was provided.'))} "
         f"The default branch is <code>{escape(str(meta.get('default_branch') or 'unknown'))}</code>."
     )
+    if readme_summary:
+        overview += f" README overview: {escape(readme_summary)}"
     clean_ai = ai_overview.strip()
     if re.search(r"[\u3400-\u9fff]", clean_ai) or any(term in clean_ai.lower() for term in (" likely ", " probably ", " may be ")):
         clean_ai = ""

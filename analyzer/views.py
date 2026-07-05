@@ -28,7 +28,7 @@ from analyzer.mongo_cache import (
 )
 from .crew.crew import run_analysis_result
 
-CACHE_REPORT_VERSION = 23
+CACHE_REPORT_VERSION = 24
 
 
 def health_check(request):
