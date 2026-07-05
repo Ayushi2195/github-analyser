@@ -2,54 +2,54 @@ import json
 
 from crewai import Task
 
-from .agents import security_agent, structure_agent
+from .agents import security_agent
 
 
-def structure_task(repo_url: str, snapshot: dict) -> Task:
-    meta_str = json.dumps(snapshot["meta"], indent=2)
-    files_str = json.dumps(snapshot["files"], indent=2)
-    return Task(
-        description=(
-            f"Analyze repository structure for: {repo_url}\n\n"
-            f"Call get_repo_structure with repo_url={repo_url!r} if needed, "
-            "but primary data is below — use it.\n\n"
-            f"Repository metadata:\n{meta_str}\n\n"
-            f"Root files, selected content previews, and directory children:\n{files_str}\n\n"
-            "Write 2-4 concise English sentences explaining the project's purpose and likely data flow. "
-            "Use only evidence present above. Do not list the tech stack or describe every file; Python does that deterministically. "
-            "Do not use words such as likely, probably, possibly, or may. Do not output any non-English text. "
-            "If evidence is insufficient, state exactly what could not be determined."
-        ),
-        expected_output=(
-            "A short evidence-based English project overview with no title or file-by-file list."
-        ),
-        agent=structure_agent(),
-    )
+def _compact_check(check: dict) -> dict:
+    reason = str(check.get("reason") or "")
+    return {
+        "name": check.get("name"),
+        "score": check.get("score"),
+        "reason": reason[:180],
+    }
 
 
 def security_task(repo_url: str, snapshot: dict) -> Task:
     scorecard = snapshot.get("openssf_scorecard") or {}
-    top_checks = sorted(scorecard.get("checks") or [], key=lambda item: item.get("score", 0), reverse=True)[:3]
+    checks = scorecard.get("checks") or []
+    scored_checks = [check for check in checks if isinstance(check.get("score"), (int, float))]
+    weak_checks = sorted(scored_checks, key=lambda item: item.get("score", 10))[:4]
+    strong_checks = sorted(scored_checks, key=lambda item: item.get("score", 0), reverse=True)[:2]
+    osv = snapshot.get("osv_vulnerabilities") or {}
+    vulns = osv.get("vulns") or []
     payload = {
         "scorecard": {
             "available": bool(scorecard.get("available")),
             "score": scorecard.get("score"),
-            "checks": top_checks,
+            "weak_checks": [_compact_check(check) for check in weak_checks],
+            "strong_checks": [_compact_check(check) for check in strong_checks],
         },
-        "osv_vulnerabilities": snapshot.get("osv_vulnerabilities") or {},
-        "best_practices_badge": snapshot.get("best_practices_badge") or {},
+        "osv": {
+            "available": bool(osv.get("available", True)),
+            "vulnerability_count": len(vulns),
+            "ids": [vuln.get("id") for vuln in vulns[:3]],
+        },
+        "best_practices_badge": {
+            "found": bool((snapshot.get("best_practices_badge") or {}).get("found")),
+            "level": (snapshot.get("best_practices_badge") or {}).get("level"),
+        },
         "security_insights": snapshot.get("security_insights") or {},
     }
-    payload_json = json.dumps(payload, indent=2)
+    payload_json = json.dumps(payload, separators=(",", ":"))
     return Task(
         description=(
             f"Write a plain-English security summary for: {repo_url}\n\n"
-            f"You are given these OpenSSF-related results as JSON:\n{payload_json}\n\n"
-            "Write exactly 4-5 sentences in English only. No bullet points, no headings, no markdown lists. "
+            f"Security signals JSON:\n{payload_json}\n\n"
+            "Write exactly 3 concise English sentences. No bullet points, no headings, no markdown lists. "
             "Explain the overall security posture, the biggest strength, the biggest gap, and one specific actionable recommendation "
             "for the maintainer. Do not repeat raw API field names unless you briefly explain them. "
             "Do not mention that you are an AI."
         ),
-        expected_output="Exactly 4-5 sentences of plain-English security summary in English only.",
+        expected_output="Exactly 3 concise sentences of plain-English security summary.",
         agent=security_agent(),
     )

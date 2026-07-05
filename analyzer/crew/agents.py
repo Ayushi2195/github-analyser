@@ -2,30 +2,15 @@ import os
 
 from crewai import Agent, LLM
 
-from analyzer.tools import get_repo_structure
-
 
 def _llm() -> LLM:
     return LLM(
-        model="llama-3.3-70b-versatile",
+        model=os.environ.get("GROQ_MODEL", "llama-3.1-8b-instant"),
         provider="openai",
         api_key=os.environ.get("GROQ_API_KEY"),
         base_url="https://api.groq.com/openai/v1",
-    )
-
-
-def structure_agent() -> Agent:
-    return Agent(
-        role="Repository Structure Analyzer",
-        goal="Produce detailed, file-by-file documentation of repository layout and stats.",
-        backstory=(
-            "Senior architect who writes thorough onboarding docs. "
-            "You never give vague summaries — you cite every root path and metadata field."
-        ),
-        tools=[get_repo_structure],
-        llm=_llm(),
-        cache=False,
-        verbose=False,
+        max_tokens=350,
+        temperature=0.2,
     )
 
 
@@ -40,4 +25,5 @@ def security_agent() -> Agent:
         llm=_llm(),
         cache=False,
         verbose=False,
+        max_iter=1,
     )

@@ -5,7 +5,7 @@ from statistics import mean
 
 import markdown
 import requests
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse
@@ -28,7 +28,12 @@ from analyzer.mongo_cache import (
 )
 from .crew.crew import run_analysis_result
 
-CACHE_REPORT_VERSION = 22
+CACHE_REPORT_VERSION = 23
+
+
+def health_check(request):
+    return JsonResponse({"status": "ok"}, status=200)
+
 
 # turns stars for a repo , eg:45135 into "45.1k" for better look
 def _format_count(value: int) -> str:
