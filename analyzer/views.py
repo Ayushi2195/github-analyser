@@ -28,7 +28,7 @@ from analyzer.mongo_cache import (
 )
 from .crew.crew import run_analysis_result
 
-CACHE_REPORT_VERSION = 20
+CACHE_REPORT_VERSION = 21
 
 # turns stars for a repo , eg:45135 into "45.1k" for better look
 def _format_count(value: int) -> str:

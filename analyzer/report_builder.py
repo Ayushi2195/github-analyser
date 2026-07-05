@@ -348,13 +348,6 @@ def build_structure_section(snapshot: dict[str, Any], ai_overview: str = "") -> 
     if clean_ai:
         lines.extend(["", f'<div class="overview-card overview-card-muted">{escape(clean_ai)}</div>'])
 
-    lines.extend([
-        "",
-        "### Key Files and Folders",
-        "",
-        _key_files_and_folders(snapshot),
-    ])
-
     lines.extend(["", "### Verified Tech Stack", ""])
     if technologies:
         lines.append('<div class="tech-stack-grid">')
@@ -398,7 +391,16 @@ def _issue_file_hints(issue: dict) -> list[str]:
         flags=re.IGNORECASE,
     )
     ci_prefixes = ("/users/", "/home/", "/tmp/", "/runner/", "/var/folders/")
-    filtered = [m for m in matches if not any(m.lower().startswith(p) for p in ci_prefixes)]
+    filtered = []
+    for match in matches:
+        lowered = match.lower()
+        if lowered.startswith(("http://", "https://", "//")):
+            continue
+        if "github.com/" in lowered or "/blob/" in lowered:
+            continue
+        if any(lowered.startswith(prefix) for prefix in ci_prefixes):
+            continue
+        filtered.append(match.strip("`.,)];"))
     return list(dict.fromkeys(filtered))[:3]
 
 
@@ -541,6 +543,13 @@ def _check_status_info(name: str, score: Any, reason: str) -> dict | None:
         if numeric is not None and numeric > 0:
             return {"label": "PASSED", "tone": "good", "score": "10/10", "description": "Automated fuzz testing is configured."}
         return {"label": "NOT DETECTED", "tone": "neutral", "score": "0/10", "description": "No OSS-Fuzz integration detected. The project may use internal fuzzing infrastructure that Scorecard cannot verify publicly."}
+
+    if name_key == "vulnerabilities":
+        if numeric is not None and numeric >= 8:
+            return {"label": "PASSED", "tone": "good", "score": f"{score}/10", "description": "Scorecard did not find dependency vulnerability signals in its project-level scan."}
+        if numeric is not None and numeric > 0:
+            return {"label": "REVIEW RECOMMENDED", "tone": "warn", "score": f"{score}/10", "description": f"Scorecard found project-level dependency vulnerability signals: {reason or 'review dependency advisories manually'}."}
+        return {"label": "NEEDS ATTENTION", "tone": "bad", "score": "0/10", "description": f"Scorecard found project-level dependency vulnerability signals: {reason or 'review dependency advisories manually'}. This is broader than the OSV commit lookup below."}
     
     if name_key == "branch-protection":
         if numeric is None or numeric < 0:
@@ -918,8 +927,8 @@ def build_vulnerabilities_section(snapshot: dict[str, Any]) -> str:
         _openSSF_intro(
             "What OSV is",
             "OSV is a vulnerability database that tracks known security issues affecting open source projects and packages. "
-            "It matters because it gives maintainers and contributors a quick way to check whether a repository has public known vulnerabilities. "
-            "A clean result means OSV did not return a known issue for the repository's default branch commit at the time of the scan."
+            "RepoFlow queries OSV for the repository's default branch commit. "
+            "This can be clean even when Scorecard reports dependency advisory risk, because Scorecard's Vulnerabilities check is broader and project-level."
         ),
         "",
     ]
@@ -936,8 +945,8 @@ def build_vulnerabilities_section(snapshot: dict[str, Any]) -> str:
             lines.append(
                 '<div class="security-card security-card-good">'
                 '<span class="security-status security-status-good">Clear</span>'
-                '<strong>No known vulnerabilities found in the OSV database — this repository has a clean vulnerability record.</strong>'
-                '<p>OSV did not return known vulnerability records for the default branch commit, which means no public vulnerability matches were found during the scan.</p>'
+                '<strong>No OSV vulnerabilities found for the default branch commit.</strong>'
+                '<p>This does not override Scorecard dependency-advisory findings. OSV commit lookup and Scorecard Vulnerabilities measure different scopes.</p>'
                 '</div>'
             )
         return "\n".join(lines)

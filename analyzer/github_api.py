@@ -416,17 +416,30 @@ def fetch_best_practices_badge(owner: str, repo: str) -> dict[str, Any]:
 def fetch_security_insights(owner: str, repo: str, files: list[dict]) -> dict[str, bool]:
     """Detect OpenSSF Security Insights and vulnerability reporting files."""
     root_names = {item.get("name", "").lower() for item in files}
+    child_names = set()
+    for item in files:
+        for child in item.get("children") or []:
+            if isinstance(child, dict):
+                child_names.add(child.get("name", "").lower())
+                child_names.add(child.get("path", "").replace("\\", "/").lower())
+            else:
+                child_names.add(str(child).lower())
     has_security_insights = any(
-        name in root_names
-        for name in ("security-insights.yml", "security-insights.yaml")
+        name in root_names or name in child_names
+        for name in (
+            "security-insights.yml",
+            "security-insights.yaml",
+            ".github/security-insights.yml",
+            ".github/security-insights.yaml",
+        )
     )
     has_security_md = "security.md" in root_names
-    has_github_security_md = False
+    has_github_security_md = ".github/security.md" in child_names
     try:
         _get(f"/repos/{owner}/{repo}/contents/.github/SECURITY.md")
         has_github_security_md = True
     except GitHubAPIError:
-        has_github_security_md = False
+        has_github_security_md = has_github_security_md
     return {
         "has_security_insights": has_security_insights,
         "has_security_md": has_security_md,
