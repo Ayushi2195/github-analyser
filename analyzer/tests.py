@@ -2,12 +2,12 @@ from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from django.test import SimpleTestCase
+from django.test import RequestFactory, SimpleTestCase
 from pymongo.errors import ServerSelectionTimeoutError
 
 from analyzer.github_api import GitHubAPIError, fetch_best_practices_badge, fetch_osv_vulnerabilities, fetch_repo_snapshot, parse_repo_url
 from analyzer.mongo_cache import cache_is_fresh, connect_mongo
-from analyzer.views import _render_markdown_report
+from analyzer.views import _render_markdown_report, download_pdf
 from analyzer.report_builder import (
     build_branch_snapshot,
     build_branches_section,
@@ -282,12 +282,25 @@ class AnalysisCacheTests(SimpleTestCase):
 
         with patch("analyzer.views.get_cached_analysis", return_value=None), \
              patch("analyzer.views.run_analysis_result", return_value=result), \
-             patch("analyzer.views.save_analysis_cache", side_effect=ServerSelectionTimeoutError("timeout")), \
-             patch("analyzer.views._try_write_pdf_file"):
+             patch("analyzer.views.save_analysis_cache", side_effect=ServerSelectionTimeoutError("timeout")):
             md_report, html_report = _render_markdown_report("https://github.com/django/django")
 
         self.assertIn("Report body", md_report)
         self.assertIn("<h1>RepoFlow</h1>", html_report)
+
+    def test_download_pdf_returns_browserless_pdf_bytes(self):
+        request = RequestFactory().get("/download/", {"repo_url": "https://github.com/django/django"})
+
+        with patch("analyzer.views.get_cached_analysis", return_value=None), \
+             patch("analyzer.views._render_markdown_report", return_value=("# RepoFlow", "<h1>RepoFlow</h1>")), \
+             patch("analyzer.views._browserless_pdf_bytes", return_value=b"%PDF-test") as browserless:
+            response = download_pdf(request)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/pdf")
+        self.assertEqual(response["Content-Disposition"], 'attachment; filename="repoflow-report.pdf"')
+        self.assertEqual(response.content, b"%PDF-test")
+        self.assertTrue(browserless.called)
 
 
 class StudentReportTests(SimpleTestCase):

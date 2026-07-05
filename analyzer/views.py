@@ -1,11 +1,11 @@
+import os
 import re
 from datetime import datetime
-from pathlib import Path
 from statistics import mean
 
 import markdown
-from django.conf import settings
-from django.http import FileResponse
+import requests
+from django.http import HttpResponse
 from django.shortcuts import redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse
@@ -25,14 +25,10 @@ from analyzer.mongo_cache import (
     normalize_repo_url,
     safe_cached_analyses,
     save_analysis_cache,
-    update_pdf_path,
 )
-from analyzer.pdf_generator import html_to_pdf
 from .crew.crew import run_analysis_result
 
 CACHE_REPORT_VERSION = 20
-PDF_CACHE_VERSION = 16
-PDF_STORAGE_DIR = Path(settings.BASE_DIR) / "generated_reports"
 
 # turns stars for a repo , eg:45135 into "45.1k" for better look
 def _format_count(value: int) -> str:
@@ -348,7 +344,6 @@ def _render_markdown_report(repo_url: str) -> tuple[str, str]:
         print(f"MongoDB save skipped, returning report without cache: {type(exc).__name__}: {exc}", flush=True)
     except Exception as exc:
         print(f"MongoDB save skipped: {type(exc).__name__}: {exc}", flush=True)
-    _try_write_pdf_file(normalized_url, html_report, md_report)
     print("Analysis completed.", flush=True)
     return md_report, html_report
 
@@ -407,68 +402,26 @@ def _pdf_filename(repo_url: str) -> str:
         return f"repoflow-report-{stamp}.pdf"
 
 
-def _pdf_cache_path(repo_url: str) -> Path:
-    try:
-        owner, repo = parse_repo_url(repo_url)
-        safe_owner = re.sub(r"[^\w\-]", "", owner)[:40]
-        safe_repo = re.sub(r"[^\w\-]", "", repo)[:40]
-        filename = f"repoflow-{safe_owner}-{safe_repo}-v{PDF_CACHE_VERSION}.pdf"
-    except GitHubAPIError:
-        filename = f"repoflow-report-v{PDF_CACHE_VERSION}.pdf"
-    return PDF_STORAGE_DIR / filename
+def _browserless_pdf_bytes(html: str) -> bytes:
+    token = os.environ.get("BROWSERLESS_API_TOKEN", "").strip()
+    if not token:
+        raise RuntimeError("PDF export is not configured. Missing BROWSERLESS_API_TOKEN.")
 
-
-def _write_pdf_file(repo_url: str, html_report: str, md_report: str) -> Path:
-    PDF_STORAGE_DIR.mkdir(parents=True, exist_ok=True)
-    path = _pdf_cache_path(repo_url)
-    pdf_html = _build_pdf_html(repo_url, html_report, md_report)
-    path.write_bytes(html_to_pdf(pdf_html))
-    try:
-        update_pdf_path(repo_url, str(path))
-    except (GitHubAPIError, PyMongoError, OSError):
-        pass
-    return path
-
-
-def _try_write_pdf_file(repo_url: str, html_report: str, md_report: str) -> Path | None:
-    try:
-        return _write_pdf_file(repo_url, html_report, md_report)
-    except Exception as exc:
-        print(f"PDF generation skipped: {exc}", flush=True)
-        try:
-            update_pdf_path(repo_url, "")
-        except (GitHubAPIError, PyMongoError, OSError):
-            pass
-        return None
-
-
-def _stored_pdf_path(repo_url: str) -> Path | None:
-    deterministic_path = _pdf_cache_path(repo_url)
-    if deterministic_path.exists() and deterministic_path.is_file():
-        return deterministic_path
-
-    try:
-        cached = get_cached_analysis(repo_url)
-    except (GitHubAPIError, PyMongoError, OSError):
-        return None
-    if not cached or not cached.pdf_path:
-        return None
-    path = Path(cached.pdf_path)
-    if not path.name.endswith(f"-v{PDF_CACHE_VERSION}.pdf"):
-        return None
-    if path.exists() and path.is_file():
-        return path
-    return None
-
-
-def _pdf_file_response(path: Path, repo_url: str) -> FileResponse:
-    response = FileResponse(
-        path.open("rb"),
-        content_type="application/pdf",
-        as_attachment=True,
-        filename=_pdf_filename(repo_url),
+    response = requests.post(
+        f"https://chrome.browserless.io/pdf?token={token}",
+        data=html.encode("utf-8"),
+        headers={"Content-Type": "text/html; charset=utf-8"},
+        timeout=30,
     )
-    response["Content-Length"] = str(path.stat().st_size)
+    if not response.ok:
+        raise RuntimeError(f"Browserless PDF export failed ({response.status_code}).")
+    return response.content
+
+
+def _pdf_bytes_response(pdf_bytes: bytes) -> HttpResponse:
+    response = HttpResponse(pdf_bytes, content_type="application/pdf")
+    response["Content-Disposition"] = 'attachment; filename="repoflow-report.pdf"'
+    response["Content-Length"] = str(len(pdf_bytes))
     response["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     response["Pragma"] = "no-cache"
     response["X-Content-Type-Options"] = "nosniff"
@@ -547,10 +500,6 @@ def download_pdf(request):
     if not repo_url:
         return redirect("index")
 
-    stored_pdf = _stored_pdf_path(repo_url)
-    if stored_pdf:
-        return _pdf_file_response(stored_pdf, repo_url)
-
     try:
         cached = get_cached_analysis(repo_url)
         if cached and cached_markdown(cached):
@@ -574,19 +523,13 @@ def download_pdf(request):
         )
 
     try:
-        pdf_path = _write_pdf_file(repo_url, html_report, md_report)
+        pdf_html = _build_pdf_html(repo_url, html_report, md_report)
+        pdf_bytes = _browserless_pdf_bytes(pdf_html)
     except Exception as exc:
-        hint = ""
-        if "playwright" in str(exc).lower() or "chromium" in str(exc).lower():
-            hint = " Run: pip install playwright && playwright install chromium"
-        return render(
-            request,
-            "analyzer/index.html",
-            _safe_homepage_context({
-                "error": f"PDF export failed: {exc}.{hint}",
-                "repo_url": repo_url,
-                "report": html_report,
-            }),
+        return HttpResponse(
+            f"PDF export failed: {exc}",
+            status=502,
+            content_type="text/plain; charset=utf-8",
         )
 
-    return _pdf_file_response(pdf_path, repo_url)
+    return _pdf_bytes_response(pdf_bytes)

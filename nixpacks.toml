@@ -1,5 +1,2 @@
-[phases.setup]
-nixPkgs = ["chromium", "nss", "at-spi2-atk", "libdrm", "libxkbcommon"]
-
 [phases.install]
-cmds = ["pip install -r requirements.txt", "playwright install chromium --with-deps"]
+cmds = ["pip install -r requirements.txt"]
