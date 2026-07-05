@@ -290,8 +290,8 @@ def _repository_statistics(snapshot: dict[str, Any]) -> str:
         ),
         _stat_card(
             "License",
-            f"Detected: {meta.get('license')}" if meta.get("license") else "Not detected",
-            "good" if meta.get("license") else "warn",
+            f"Detected: {meta.get('license')}" if meta.get("license") and meta.get("license") != "NOASSERTION" else ("Custom (non-standard)" if meta.get("license") == "NOASSERTION" else "Not detected"),
+            "good" if meta.get("license") and meta.get("license") != "NOASSERTION" else "warn",
         ),
         _stat_card(
             "CONTRIBUTING.md",
