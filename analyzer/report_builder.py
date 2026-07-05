@@ -157,7 +157,7 @@ def _purpose_for_item(item: dict) -> str:
         return f"Project-specific AI/skill integration area. Its exact contents, not the folder name alone, should determine behavior.{child_hint}"
     if lower in {"fixtures", "examples", "samples"}:
         return f"Example or test data that can show expected inputs and outputs.{child_hint}"
-    return "Supporting root item. RepoFlow has insufficient content evidence to claim a more specific purpose."
+    return None
 
 
 def _child_name(child: Any) -> str:
@@ -208,13 +208,34 @@ def _key_files_and_folders(snapshot: dict[str, Any]) -> str:
             continue
         item_type = "dir" if item.get("type") == "dir" else "file"
         purpose = _purpose_for_item(item)
+        if not purpose:
+            continue
         lines.append(f"- **`{name}` ({item_type}):** {purpose}")
     return "\n".join(lines)
 
 
-def _has_root_file(snapshot: dict[str, Any], *names: str) -> bool:
-    available = {item.get("name", "").lower() for item in snapshot.get("files", [])}
-    return any(name.lower() in available for name in names)
+def _has_root_file(snapshot: dict, filename: str) -> bool:
+    files = snapshot.get("files", [])
+    filename_lower = filename.lower()
+
+    # Check root-level files first
+    for f in files:
+        if f.get("name", "").lower() == filename_lower:
+            return True
+
+    # Also check .github/ directory children
+    # (many projects put CONTRIBUTING.md, SECURITY.md inside .github/)
+    for f in files:
+        if f.get("name", "").lower() == ".github":
+            children = f.get("children", [])
+            for child in children:
+                child_name = (
+                    child.get("name", "") if isinstance(child, dict) else str(child)
+                )
+                if child_name.lower() == filename_lower:
+                    return True
+
+    return False
 
 
 def _has_ci_config(snapshot: dict[str, Any]) -> bool:
@@ -292,7 +313,7 @@ def _repository_statistics(snapshot: dict[str, Any]) -> str:
         ),
         _stat_card(
             "Protected branches",
-            f"{protected_count} detected" if protected_count else "None detected",
+            f"{protected_count} detected" if protected_count else "Insufficient data",
             "good" if protected_count else "warn",
         ),
     ]
@@ -376,7 +397,9 @@ def _issue_file_hints(issue: dict) -> list[str]:
         text,
         flags=re.IGNORECASE,
     )
-    return list(dict.fromkeys(matches))[:3]
+    ci_prefixes = ("/users/", "/home/", "/tmp/", "/runner/", "/var/folders/")
+    filtered = [m for m in matches if not any(m.lower().startswith(p) for p in ci_prefixes)]
+    return list(dict.fromkeys(filtered))[:3]
 
 
 def _issue_candidate(issue: dict) -> dict:
@@ -819,6 +842,16 @@ def build_security_section(snapshot: dict[str, Any], security_summary: str = "")
         lines.append(f"- **Scorecard repository:** {repo}")
     if date:
         lines.append(f"- **Scorecard date:** {date}")
+        try:
+            from datetime import datetime, timezone
+            scorecard_dt = datetime.fromisoformat(date)
+            if scorecard_dt.tzinfo is None:
+                scorecard_dt = scorecard_dt.replace(tzinfo=timezone.utc)
+            months_old = (datetime.now(timezone.utc) - scorecard_dt).days / 30
+            if months_old > 6:
+                lines.append(f'\n> ⚠️ **Note:** This scorecard was last computed on {date} — scores may not reflect the current repository state.')
+        except (ValueError, TypeError):
+            pass
     lines.extend(["", "### Individual Checks", "", '<div class="scorecard-check-grid">'])
     if not checks:
         lines.append('<div class="security-card security-card-neutral"><strong>No individual checks returned</strong><p>The Scorecard API returned an overall result without detailed checks.</p></div>')
