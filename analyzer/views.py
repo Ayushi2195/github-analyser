@@ -408,13 +408,32 @@ def _browserless_pdf_bytes(html: str) -> bytes:
         raise RuntimeError("PDF export is not configured. Missing BROWSERLESS_API_TOKEN.")
 
     response = requests.post(
-        f"https://chrome.browserless.io/pdf?token={token}",
-        data=html.encode("utf-8"),
-        headers={"Content-Type": "text/html; charset=utf-8"},
+        f"https://production-sfo.browserless.io/pdf?token={token}",
+        json={
+            "html": html,
+            "options": {
+                "format": "A4",
+                "printBackground": True,
+                "margin": {
+                    "top": "12mm",
+                    "right": "10mm",
+                    "bottom": "14mm",
+                    "left": "10mm",
+                },
+            },
+        },
+        headers={
+            "Cache-Control": "no-cache",
+            "Content-Type": "application/json",
+        },
         timeout=30,
     )
     if not response.ok:
-        raise RuntimeError(f"Browserless PDF export failed ({response.status_code}).")
+        detail = response.text[:180].strip()
+        message = f"Browserless PDF export failed ({response.status_code})"
+        if detail:
+            message = f"{message}: {detail}"
+        raise RuntimeError(message)
     return response.content
 
 
