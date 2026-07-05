@@ -484,6 +484,60 @@ def build_recommendations_section(snapshot: dict[str, Any]) -> str:
     lines.extend(f"- {recommendation}" for recommendation in recommendations)
     return "\n".join(lines)
 
+def _check_status_info(name: str, score: Any, reason: str) -> dict | None:
+    name_key = re.sub(r"[\s_]+", "-", (name or "").strip().lower())
+    reason_lower = (reason or "").lower()
+    try:
+        numeric = float(score)
+    except (TypeError, ValueError):
+        numeric = None
+
+    if name_key == "cii-best-practices":
+        if numeric is not None and numeric >= 5:
+            return {"label": "PASSED", "tone": "good", "score": "10/10", "description": "CII Best Practices Badge: Passing. The project follows recognized open-source security best practices."}
+        return {"label": "NOT VERIFIED", "tone": "neutral", "score": None, "description": "No CII Best Practices badge was found. This does not necessarily indicate poor security."}
+
+    if name_key == "signed-releases":
+        if numeric is not None and numeric > 0:
+            return {"label": "PASSED", "tone": "good", "score": "10/10", "description": "Signed software releases were detected."}
+        return {"label": "NOT DETECTED", "tone": "neutral", "score": "Not Available", "description": "No signed GitHub Releases were found. The project may distribute software through another release pipeline (npm, custom CI, etc)."}
+
+    if name_key == "packaging":
+        if numeric is not None and numeric > 0:
+            return {"label": "PASSED", "tone": "good", "score": "10/10", "description": "A secure packaging and release workflow was detected."}
+        return {"label": "NOT DETECTED", "tone": "neutral", "score": "Not Available", "description": "No packaging workflow was detected. This is common for repositories that distribute through custom pipelines or are source-code only."}
+
+    if name_key == "token-permissions":
+        if any(term in reason_lower for term in ("internal error", "unavailable", "rpc error", "could not", "exception")):
+            return {"label": "COULD NOT VERIFY", "tone": "neutral", "score": "Not Publicly Available", "description": "GitHub does not expose enough information to verify token permissions. Manual review may be required."}
+        if numeric is not None and numeric > 0:
+            return {"label": "PASSED", "tone": "good", "score": "10/10", "description": "GitHub Actions use restricted token permissions."}
+        return {"label": "NEEDS ATTENTION", "tone": "bad", "score": "0/10", "description": "Workflow tokens appear to have broader permissions than recommended."}
+
+    if name_key == "fuzzing":
+        if numeric is not None and numeric > 0:
+            return {"label": "PASSED", "tone": "good", "score": "10/10", "description": "Automated fuzz testing is configured."}
+        return {"label": "NOT DETECTED", "tone": "neutral", "score": "0/10", "description": "No OSS-Fuzz integration detected. The project may use internal fuzzing infrastructure that Scorecard cannot verify publicly."}
+    
+    if name_key == "branch-protection":
+        if numeric is None or numeric < 0:
+            return {"label": "COULD NOT VERIFY", "tone": "neutral", "score": "Not Publicly Available", "description": "Scorecard could not read branch protection settings. This is common for repositories with restricted GitHub API access, it does not indicate missing protection."}
+        if numeric >= 8:
+            return {"label": "PASSED", "tone": "good", "score": f"{score}/10", "description": "Branch protection rules are enabled."}
+        if numeric > 0:
+            return {"label": "REVIEW RECOMMENDED", "tone": "warn", "score": f"{score}/10", "description": "Branch protection is partially configured but not maximal on all branches."}
+        return {"label": "NEEDS ATTENTION", "tone": "bad", "score": "0/10", "description": "No branch protection rules were detected."}
+
+    if name_key == "ci-tests":
+        if numeric is None or numeric < 0:
+            return {"label": "COULD NOT VERIFY", "tone": "neutral", "score": "Not Available", "description": "Scorecard could not find pull requests to analyze CI test runs. This does not mean CI is absent, the project may use a different workflow."}
+        if numeric >= 8:
+            return {"label": "PASSED", "tone": "good", "score": f"{score}/10", "description": "CI tests run on code changes."}
+        if numeric > 0:
+            return {"label": "REVIEW RECOMMENDED", "tone": "warn", "score": f"{score}/10", "description": "CI tests are partially configured but do not run on every pull request."}
+        return {"label": "NEEDS ATTENTION", "tone": "bad", "score": "0/10", "description": "No CI test runs were detected on pull requests."}
+    
+    return None  # not handled — fall through to existing logic
 
 def _scorecard_indicator(score: Any) -> str:
     try:
@@ -775,18 +829,32 @@ def build_security_section(snapshot: dict[str, Any], security_summary: str = "")
     for check in checks:
         name = check.get("name") or "Unnamed check"
         score = check.get("score")
-        reason = _plain_scorecard_reason(str(name), score, str(check.get("reason") or ""))
-        indicator = _scorecard_indicator(score)
-        tone = _status_tone(indicator)
-        score_text = score if score is not None else "Data unavailable"
-        lines.extend([
+        raw_reason = str(check.get("reason") or "")
+
+        info = _check_status_info(str(name), score, raw_reason)
+        if info:
+            tone = info["tone"]
+            label = info["label"]
+            score_display = info["score"]
+            description = info["description"]
+        else:
+            reason = _plain_scorecard_reason(str(name), score, raw_reason)
+            indicator = _scorecard_indicator(score)
+            tone = _status_tone(indicator)
+            label = indicator
+            score_display = f"{score}/10" if score is not None else "Data unavailable"
+            description = reason
+
+        card_lines = [
             f'<div class="scorecard-check scorecard-check-{tone}">',
-            f'<span class="security-status security-status-{tone}">{indicator}</span>',
+            f'<span class="security-status security-status-{tone}">{escape(str(label))}</span>',
             f'<strong>{escape(str(name))}</strong>',
-            f'<small>Score: {escape(str(score_text))}/10</small>',
-            f'<p>{escape(str(reason))}</p>',
-            '</div>',
-        ])
+        ]
+        if score_display is not None:
+            card_lines.append(f'<small>Score: {escape(str(score_display))}</small>')
+        card_lines.append(f'<p>{escape(str(description))}</p>')
+        card_lines.append('</div>')
+        lines.extend(card_lines)
     lines.extend(["</div>", "", badge_md])
     return "\n".join(lines).strip()
 
