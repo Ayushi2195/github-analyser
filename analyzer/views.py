@@ -127,9 +127,9 @@ def _cached_real_analysis_count() -> int:
         return 0
 
 
-def _fallback_preview() -> dict:   #if MongoDB is not available or no cached data for the sample repo, show this hardcoded preview data for the sample repo (tiangolo/fastapi)
+def _fallback_preview() -> dict:   #if MongoDB is not available or no cached data for the sample repo, show this hardcoded preview data for the sample repo
     return {
-        "repo_display": "tiangolo/fastapi",
+        "repo_display": "kubernetes/kubernetes",
         "health_score": 80,
         "scorecard_score": "N/A",
         "health_label": "Security signals",
@@ -139,10 +139,10 @@ def _fallback_preview() -> dict:   #if MongoDB is not available or no cached dat
         "prs_total": 0,
         "branches_sampled": 0,
         "issue_titles": [
-            "Analyze tiangolo/fastapi to show exact GitHub issue titles here",
-            "Saved FastAPI data will include issue numbers and titles",
-            "The preview updates from MongoDB once the report exists",
-        ],
+            "#140213 - Misleading error message in API chunking test case",
+            "#140243 - kubectl port-forward: no way to suppress log messages",
+            "#140191 - e2e tests use hardcoded resource sizes too large for constrained nodes",
+],
     }
 
 
@@ -157,7 +157,7 @@ def _score_tone(score: int) -> str:
 def _sample_preview() -> dict:
     preview = _fallback_preview()
     try:
-        cached = get_cached_analysis("https://github.com/tiangolo/fastapi")
+        cached = get_cached_analysis("https://github.com/kubernetes/kubernetes")
     except (GitHubAPIError, PyMongoError, OSError):
         return preview
     if not cached:
