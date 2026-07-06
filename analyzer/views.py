@@ -103,7 +103,7 @@ def _gallery_items() -> list[dict]:
     if len(real_analyses) >= 6:
         return [_gallery_item(analysis) for analysis in real_analyses[:6]]
 
-    featured_needed = min(3, 6 - len(real_analyses)) # if not enough real analyses, fill with featured ones, but max 3 featured to keep it fresh
+    featured_needed = 6 - len(real_analyses)
     featured_analyses = safe_cached_analyses(limit=featured_needed, is_featured=True)
     analyses = [*real_analyses, *featured_analyses]
     return [_gallery_item(analysis) for analysis in analyses]
