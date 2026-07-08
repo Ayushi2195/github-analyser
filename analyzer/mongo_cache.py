@@ -105,7 +105,7 @@ def _tech_stack(snapshot: dict[str, Any]) -> list[str]:
     meta = snapshot.get("meta", {})
     stack = []
     for value in [meta.get("language"), *(meta.get("topics") or [])[:2], meta.get("license")]:
-        if value and value not in stack:
+        if value and value != "NOASSERTION" and value not in stack:
             stack.append(value)
     return stack[:4]
 

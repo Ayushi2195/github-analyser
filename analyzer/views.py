@@ -90,7 +90,7 @@ def _gallery_item(analysis: RepoAnalysisCache) -> dict:
         "health_state": scorecard_display["state"],
         "health_text_class": scorecard_display["text_class"],
         "primary_language": analysis.primary_language or "Unknown",
-        "tech_stack": analysis.tech_stack or [analysis.primary_language or "Repo"],
+        "tech_stack": [t for t in (analysis.tech_stack or []) if t != "NOASSERTION"] or [analysis.primary_language or "Repo"],
         "stars": _format_count(analysis.stars or 0),
         "branch_count": cached_branch_count(analysis),
         "analyzed_ago": analyzed_ago_label(analysis),
