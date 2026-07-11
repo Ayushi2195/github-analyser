@@ -127,72 +127,12 @@ def save_analysis_cache(
     report_sections: dict[str, str],
     pdf_path: str = "",
 ) -> RepoAnalysisCache | None:
-    if not mongo_storage_enabled():
-        print("MongoDB storage disabled; skipping save for this analysis.", flush=True)
-        return None
-
-    connect_mongo()
-    normalized_url = normalize_repo_url(repo_url)
-    meta = snapshot.get("meta", {})
-    owner = snapshot.get("owner", "")
-    repo = snapshot.get("repo", "")
-    if not owner or not repo:
-        try:
-            owner, repo = parse_repo_url(normalized_url)
-        except Exception:
-            owner = owner or ""
-            repo = repo or ""
-    analyzed_at = timezone.localtime(timezone.now()).replace(tzinfo=None)
-    existing = RepoAnalysisCache.objects(repo_url=normalized_url).only(
-        "is_featured", "show_in_gallery"
-    ).first()
-    is_featured = bool(existing.is_featured) if existing else False
-    show_in_gallery = bool(existing.show_in_gallery) if existing else True
-
-    saved = RepoAnalysisCache.objects(repo_url=normalized_url).modify(
-        upsert=True,
-        new=True,
-        set__repo_url=normalized_url,
-        set__owner=owner,
-        set__repo_name=repo,
-        set__analyzed_at=analyzed_at,
-        set__stars=meta.get("stars") or 0,
-        set__primary_language=meta.get("language") or "",
-        set__tech_stack=_tech_stack(snapshot),
-        set__openssf_sections={
-            "scorecard": snapshot.get("openssf_scorecard") or {},
-            "best_practices_badge": snapshot.get("best_practices_badge") or {},
-            "osv_vulnerabilities": snapshot.get("osv_vulnerabilities") or {},
-            "security_insights": snapshot.get("security_insights") or {},
-            "security_summary": security_summary,
-            "report": report_sections,
-        },
-        set__pdf_path=pdf_path,
-        set__is_featured=is_featured,
-        set__show_in_gallery=show_in_gallery,
-    )
-    RepoAnalysisCache._get_collection().update_one(
-        {"repo_url": normalized_url},
-        {
-            "$unset": {
-                "health_score": "",
-                "health_label": "",
-                "health_signals": "",
-                "forks": "",
-                "open_issues_count": "",
-                "open_prs_count": "",
-                "report_sections": "",
-            }
-        },
-    )
-    print(f"MongoDB saved report: {owner}/{repo}", flush=True)
-    return saved
+    print("MongoDB storage disabled for new analyses.", flush=True)
+    return None
 
 
 def update_pdf_path(repo_url: str, pdf_path: str) -> None:
-    connect_mongo()
-    normalized_url = normalize_repo_url(repo_url)
-    RepoAnalysisCache.objects(repo_url=normalized_url).update_one(set__pdf_path=pdf_path)
+    print("MongoDB update PDF path disabled.", flush=True)
 
 
 def cached_markdown(cached: RepoAnalysisCache) -> str:

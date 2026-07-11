@@ -336,8 +336,8 @@ def _render_markdown_report(repo_url: str) -> tuple[str, str]:
     normalized_url = normalize_repo_url(repo_url)
     try:
         cached = get_cached_analysis(normalized_url)
-        if cached and cached_markdown(cached) and cache_is_fresh(cached):
-            print("Using MongoDB cache (analysis is less than 24 hours old).", flush=True)
+        if cached and cached_markdown(cached):
+            print("Using MongoDB cache.", flush=True)
             return _cached_report_content(cached)
     except Exception as exc:
         print(f"Cache lookup skipped: {exc}", flush=True)
@@ -350,23 +350,8 @@ def _render_markdown_report(repo_url: str) -> tuple[str, str]:
         # handles branch tables, f_c->code blocks, nl2br turns newlines into <br> tags for better formatting
     )
 
-    if mongo_storage_enabled():
-        try:
-            save_analysis_cache(
-                normalized_url,
-                result.get("snapshot", {}),
-                result.get("health", {}),
-                {
-                    "markdown": md_report,
-                    "html": html_report,
-                    "branch_count": (result.get("sections") or {}).get("branch_count", 0),
-                },
-            )
-            print("Saved analysis to MongoDB.", flush=True)
-        except Exception as exc:
-            print(f"MongoDB save failed: {exc}", flush=True)
-    else:
-        print("MongoDB storage disabled; skipping save for user-submitted analysis.", flush=True)
+    # MongoDB storage is disabled for new analyses per requirements.
+    print("MongoDB storage disabled for new analyses; skipping save.", flush=True)
 
     print("Analysis completed.", flush=True)
     return md_report, html_report

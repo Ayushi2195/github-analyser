@@ -156,20 +156,43 @@ def _file_names(files: list[dict[str, Any]]) -> set[str]:
     return names
 
 
-def _fallback_scorecard(
+ALL_18_SCORECARD_CHECKS = [
+    "Binary-Artifacts",
+    "Branch-Protection",
+    "CI-Tests",
+    "CII-Best-Practices",
+    "Code-Review",
+    "Contributors",
+    "Dangerous-Workflow",
+    "Dependency-Update-Tool",
+    "Fuzzing",
+    "License",
+    "Maintained",
+    "Packaging",
+    "Pinned-Dependencies",
+    "SAST",
+    "Security-Policy",
+    "Signed-Releases",
+    "Token-Permissions",
+    "Vulnerabilities",
+]
+
+
+def _fill_missing_scorecard_checks(
     owner: str,
     repo: str,
-    api_scorecard: dict[str, Any],
+    existing_checks: list[dict[str, Any]],
     meta: dict[str, Any],
     files: list[dict[str, Any]],
     branches: list[dict[str, Any]],
     osv_vulnerabilities: dict[str, Any],
     security_insights: dict[str, Any],
-) -> dict[str, Any]:
-    """Return Scorecard-shaped data when OpenSSF has no precomputed record."""
-    if api_scorecard.get("available") and api_scorecard.get("score") is not None and api_scorecard.get("checks"):
-        return api_scorecard
-
+    issues: list[dict[str, Any]],
+    pull_requests: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    existing_names = {str(c.get("name", "")).strip().lower() for c in existing_checks}
+    updated_checks = list(existing_checks)
+    
     names = _file_names(files)
     protected_count = sum(1 for branch in branches if branch.get("protected"))
     has_workflows = "workflows" in names or ".github/workflows" in names
@@ -191,17 +214,23 @@ def _fallback_scorecard(
         )
     )
     has_vulns = bool((osv_vulnerabilities or {}).get("vulns"))
-    has_license = bool((meta.get("license") or {}).get("spdx_id"))
+    has_license = bool((meta.get("license") or {}).get("spdx_id")) if isinstance(meta.get("license"), dict) else bool(meta.get("license"))
+    spdx_id = meta.get("license", {}).get("spdx_id") if isinstance(meta.get("license"), dict) else meta.get("license")
     has_description = bool(meta.get("description"))
+    
+    unique_authors = set()
+    for item in (issues or []) + (pull_requests or []):
+        author = item.get("author")
+        if author:
+            unique_authors.add(author.lower())
+    has_contributors = len(unique_authors) > 1
 
-    checks = [
-        {
-            "name": "Binary-Artifacts",
+    fallback_definitions = {
+        "Binary-Artifacts": {
             "score": 8 if has_dependency_manifest else 4,
             "reason": "Binary artifacts are not reported in the sampled repository metadata.",
         },
-        {
-            "name": "Branch-Protection",
+        "Branch-Protection": {
             "score": 10 if protected_count else 4,
             "reason": (
                 f"{protected_count} sampled branch(es) report protection enabled."
@@ -209,8 +238,7 @@ def _fallback_scorecard(
                 else "No sampled branch reports GitHub branch protection."
             ),
         },
-        {
-            "name": "CI-Tests",
+        "CI-Tests": {
             "score": 10 if has_workflows and has_tests else 6 if has_workflows or has_tests else 3,
             "reason": (
                 "CI workflow metadata and test directories were detected."
@@ -219,43 +247,59 @@ def _fallback_scorecard(
                 else "No CI workflow or test directory evidence was detected."
             ),
         },
-        {
-            "name": "CII-Best-Practices",
+        "CII-Best-Practices": {
             "score": 6 if has_description else 3,
             "reason": "Best-practices badge data was not directly available, so this is estimated from repository metadata.",
         },
-        {
-            "name": "Code-Review",
+        "Code-Review": {
             "score": 6 if has_workflows else 4,
             "reason": "The repository shows some evidence of review-friendly workflow structure, but not full review automation metadata.",
         },
-        {
-            "name": "Dangerous-Workflow",
+        "Contributors": {
+            "score": 10 if has_contributors else 5,
+            "reason": (
+                f"The project has contributions from multiple authors ({len(unique_authors)} detected)."
+                if has_contributors
+                else "The project contributors appear to be from a single organization or developer."
+            ),
+        },
+        "Dangerous-Workflow": {
             "score": 8 if has_workflows else 5,
             "reason": "Workflow files were sampled and no obvious dangerous workflow pattern was detected.",
         },
-        {
-            "name": "Dependency-Update-Tool",
+        "Dependency-Update-Tool": {
             "score": 6 if has_dependency_manifest else 3,
             "reason": "Dependency update automation is not directly verifiable from the sampled metadata.",
         },
-        {
-            "name": "Fuzzing",
+        "Fuzzing": {
             "score": 3,
             "reason": "No public fuzzing configuration was detected in the sampled repository files.",
         },
-        {
-            "name": "Pinned-Dependencies",
+        "License": {
+            "score": 10 if has_license else 3,
+            "reason": (
+                f"Repository declares license {spdx_id}."
+                if has_license
+                else "No repository license was detected."
+            ),
+        },
+        "Maintained": {
+            "score": 8 if has_description else 5,
+            "reason": "Repository activity could not be fully verified from the sampled metadata, so this is estimated.",
+        },
+        "Packaging": {
+            "score": 6 if has_dependency_manifest else 3,
+            "reason": "Packaging metadata was not fully verifiable from the sampled repository files.",
+        },
+        "Pinned-Dependencies": {
             "score": 5 if has_dependency_manifest else 3,
             "reason": "Dependency pinning is not directly verifiable from the sampled repository metadata.",
         },
-        {
-            "name": "SAST",
+        "SAST": {
             "score": 4,
             "reason": "No public static analysis workflow or scan configuration was detected from the sampled files.",
         },
-        {
-            "name": "Security-Policy",
+        "Security-Policy": {
             "score": 10 if has_security_policy else 3,
             "reason": (
                 "Security reporting metadata was detected."
@@ -263,18 +307,15 @@ def _fallback_scorecard(
                 else "No SECURITY.md or Security Insights metadata was detected."
             ),
         },
-        {
-            "name": "Signed-Releases",
+        "Signed-Releases": {
             "score": 3,
             "reason": "Release signing metadata could not be confirmed from the sampled repository files.",
         },
-        {
-            "name": "Token-Permissions",
+        "Token-Permissions": {
             "score": 6 if has_workflows else 4,
             "reason": "Workflow permissions could not be verified from the sampled metadata.",
         },
-        {
-            "name": "Vulnerabilities",
+        "Vulnerabilities": {
             "score": 3 if has_vulns else 10 if osv_vulnerabilities.get("available", True) else 6,
             "reason": (
                 "OSV returned known vulnerability records for this commit."
@@ -284,35 +325,48 @@ def _fallback_scorecard(
                 else "OSV scan was unavailable, so this check is estimated."
             ),
         },
-        {
-            "name": "License",
-            "score": 10 if has_license else 3,
-            "reason": (
-                f"Repository declares license {meta.get('license', {}).get('spdx_id')}."
-                if has_license
-                else "No repository license was detected."
-            ),
-        },
-        {
-            "name": "Maintained",
-            "score": 8 if has_description else 5,
-            "reason": "Repository activity could not be fully verified from the sampled metadata, so this is estimated.",
-        },
-        {
-            "name": "Packaging",
-            "score": 6 if has_dependency_manifest else 3,
-            "reason": "Packaging metadata was not fully verifiable from the sampled repository files.",
-        },
-        {
-            "name": "Project-Metadata",
-            "score": 8 if has_description else 4,
-            "reason": (
-                "GitHub repository description is documented."
-                if has_description
-                else "GitHub repository description is missing."
-            ),
-        },
-    ]
+    }
+
+    for name in ALL_18_SCORECARD_CHECKS:
+        if name.lower() not in existing_names:
+            fallback = fallback_definitions[name]
+            updated_checks.append({
+                "name": name,
+                "score": fallback["score"],
+                "reason": fallback["reason"]
+            })
+            
+    return updated_checks
+
+
+def _fallback_scorecard(
+    owner: str,
+    repo: str,
+    api_scorecard: dict[str, Any],
+    meta: dict[str, Any],
+    files: list[dict[str, Any]],
+    branches: list[dict[str, Any]],
+    osv_vulnerabilities: dict[str, Any],
+    security_insights: dict[str, Any],
+    issues: list[dict[str, Any]],
+    pull_requests: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Return Scorecard-shaped data when OpenSSF has no precomputed record."""
+    if api_scorecard.get("available") and api_scorecard.get("score") is not None and api_scorecard.get("checks"):
+        return api_scorecard
+
+    checks = _fill_missing_scorecard_checks(
+        owner,
+        repo,
+        [],
+        meta,
+        files,
+        branches,
+        osv_vulnerabilities,
+        security_insights,
+        issues,
+        pull_requests,
+    )
     score = round(sum(float(check["score"]) for check in checks) / len(checks), 1)
     return {
         "available": True,
@@ -718,6 +772,21 @@ def fetch_repo_snapshot(repo_url: str) -> dict[str, Any]:
             branches,
             osv_vulnerabilities,
             security_insights,
+            issues,
+            pull_requests,
+        )
+    else:
+        openssf_scorecard["checks"] = _fill_missing_scorecard_checks(
+            owner,
+            repo,
+            openssf_scorecard["checks"],
+            meta,
+            files,
+            branches,
+            osv_vulnerabilities,
+            security_insights,
+            issues,
+            pull_requests,
         )
     for index, branch in enumerate(branches):
         if index >= BRANCH_DETAIL_LIMIT:

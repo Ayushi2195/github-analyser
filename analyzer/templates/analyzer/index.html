@@ -472,20 +472,48 @@
         document.getElementById('loadingPanel').scrollIntoView({ behavior: 'smooth', block: 'center' });
 
         const steps = ['step1', 'step2', 'step3', 'step4'];
+        
+        // Reset all steps to initial states immediately
+        steps.forEach((id, i) => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            const icon = el.querySelector('.step-icon');
+            if (i === 0) {
+                // Step 1 starts active
+                el.className = 'flex items-center gap-3 rounded-xl px-4 py-3 loading-shimmer text-sm font-medium text-brand-700';
+                if (icon) {
+                    icon.className = 'step-icon h-6 w-6 rounded-full bg-brand-500 text-white flex items-center justify-center text-xs';
+                    icon.textContent = '1';
+                }
+            } else {
+                // Steps 2, 3, 4 start pending
+                el.className = 'flex items-center gap-3 rounded-xl px-4 py-3 bg-slate-50 text-sm font-medium text-slate-400';
+                if (icon) {
+                    icon.className = 'step-icon h-6 w-6 rounded-full bg-slate-200 flex items-center justify-center text-xs';
+                    icon.textContent = String(i + 1);
+                }
+            }
+        });
+
         const delays = [0, 10000, 26000, 42000];
         delays.forEach((delay, i) => {
             setTimeout(() => {
                 steps.forEach((id, j) => {
                     const el = document.getElementById(id);
+                    if (!el) return;
                     const icon = el.querySelector('.step-icon');
                     if (j < i) {
                         el.className = 'flex items-center gap-3 rounded-xl px-4 py-3 bg-emerald-50 text-sm font-medium text-emerald-700';
-                        icon.className = 'step-icon h-6 w-6 rounded-full bg-emerald-500 text-white flex items-center justify-center text-xs';
-                        icon.textContent = '✓';
+                        if (icon) {
+                            icon.className = 'step-icon h-6 w-6 rounded-full bg-emerald-500 text-white flex items-center justify-center text-xs';
+                            icon.textContent = '✓';
+                        }
                     } else if (j === i) {
                         el.className = 'flex items-center gap-3 rounded-xl px-4 py-3 loading-shimmer text-sm font-medium text-brand-700';
-                        icon.className = 'step-icon h-6 w-6 rounded-full bg-brand-500 text-white flex items-center justify-center text-xs';
-                        icon.textContent = String(j + 1);
+                        if (icon) {
+                            icon.className = 'step-icon h-6 w-6 rounded-full bg-brand-500 text-white flex items-center justify-center text-xs';
+                            icon.textContent = String(j + 1);
+                        }
                     }
                 });
             }, delay);

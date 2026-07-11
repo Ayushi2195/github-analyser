@@ -611,6 +611,24 @@ def _check_status_info(name: str, score: Any, reason: str) -> dict | None:
             return {"label": "REVIEW RECOMMENDED", "tone": "warn", "score": f"{score}/10", "description": "CI tests are partially configured but do not run on every pull request."}
         return {"label": "NEEDS ATTENTION", "tone": "bad", "score": "0/10", "description": "No CI test runs were detected on pull requests."}
     
+    if name_key == "contributors":
+        if numeric is None or numeric < 0:
+            return {"label": "COULD NOT VERIFY", "tone": "neutral", "score": "Not Available", "description": "Scorecard could not determine contributor organizations. Manual review may be required."}
+        if numeric >= 8:
+            return {"label": "PASSED", "tone": "good", "score": f"{score}/10", "description": "Project has contributors from multiple organizations."}
+        if numeric > 0:
+            return {"label": "REVIEW RECOMMENDED", "tone": "warn", "score": f"{score}/10", "description": "Project has limited contributor diversity."}
+        return {"label": "NEEDS ATTENTION", "tone": "bad", "score": "0/10", "description": "Project contributors appear to be from a single organization."}
+
+    if name_key == "dependency-update-tool":
+        if numeric is None or numeric < 0:
+            return {"label": "NOT DETECTED", "tone": "neutral", "score": "Not Available", "description": "No dependency update tool was detected in the sampled repository files."}
+        if numeric >= 8:
+            return {"label": "PASSED", "tone": "good", "score": f"{score}/10", "description": "Automated dependency update tool is configured."}
+        if numeric > 0:
+            return {"label": "REVIEW RECOMMENDED", "tone": "warn", "score": f"{score}/10", "description": "Dependency update tool is partially configured."}
+        return {"label": "NEEDS ATTENTION", "tone": "bad", "score": "0/10", "description": "No automated dependency update tool was detected."}
+
     return None  # not handled — fall through to existing logic
 
 def _scorecard_indicator(score: Any) -> str:
