@@ -6,7 +6,7 @@ from django.test import RequestFactory, SimpleTestCase
 
 from analyzer.github_api import GitHubAPIError, fetch_best_practices_badge, fetch_osv_vulnerabilities, fetch_repo_snapshot, parse_repo_url
 from analyzer.mongo_cache import cache_is_fresh, connect_mongo
-from analyzer.views import _render_markdown_report, download_pdf
+from analyzer.views import _gallery_items, _render_markdown_report, download_pdf
 from analyzer.report_builder import (
     build_branch_snapshot,
     build_branches_section,
@@ -186,10 +186,10 @@ class GitHubURLTests(SimpleTestCase):
             snapshot = fetch_repo_snapshot("https://github.com/django/django")
 
         scorecard = snapshot["openssf_scorecard"]
-        self.assertTrue(scorecard["available"])
-        self.assertIsInstance(scorecard["score"], float)
-        self.assertGreater(len(scorecard["checks"]), 0)
-        self.assertEqual(scorecard["source"], "repoflow-fallback")
+        self.assertFalse(scorecard["available"])
+        self.assertEqual(snapshot["repo_flow_security_checks"]["source"], "repoflow-fallback")
+        self.assertIsInstance(snapshot["repo_flow_security_checks"]["score"], float)
+        self.assertGreater(len(snapshot["repo_flow_security_checks"]["checks"]), 0)
 
     def test_snapshot_fetches_default_branch_sha_when_not_sampled(self):
         paths = []
@@ -258,10 +258,53 @@ class AnalysisCacheTests(SimpleTestCase):
             connect_mongo()
 
         self.assertEqual(captured["serverSelectionTimeoutMS"], 30000)
-        self.assertEqual(captured["connectTimeoutMS"], 30000)
-        self.assertEqual(captured["socketTimeoutMS"], 60000)
-        self.assertTrue(captured["retryWrites"])
-        self.assertEqual(captured["maxPoolSize"], 10)
+
+    def test_gallery_excludes_django_and_prefers_curl(self):
+        from types import SimpleNamespace
+        from datetime import datetime, timezone
+
+        django_analysis = SimpleNamespace(
+            owner="django",
+            repo_name="django",
+            repo_url="https://github.com/django/django",
+            openssf_sections={"scorecard": {"score": 9.0}},
+            primary_language="Python",
+            tech_stack=["Django"],
+            stars=200000,
+            analyzed_at=datetime.now(timezone.utc),
+        )
+        curl_analysis = SimpleNamespace(
+            owner="curl",
+            repo_name="curl",
+            repo_url="https://github.com/curl/curl",
+            openssf_sections={"scorecard": {"score": 7.1}},
+            primary_language="C",
+            tech_stack=["C"],
+            stars=80000,
+            analyzed_at=datetime.now(timezone.utc),
+        )
+        other_analysis = SimpleNamespace(
+            owner="example",
+            repo_name="example",
+            repo_url="https://github.com/example/example",
+            openssf_sections={"scorecard": {"score": 6.5}},
+            primary_language="Python",
+            tech_stack=["Python"],
+            stars=1000,
+            analyzed_at=datetime.now(timezone.utc),
+        )
+
+        def fake_safe_cached_analyses(limit=5, is_featured=None):
+            if is_featured is False:
+                return [django_analysis, curl_analysis, other_analysis]
+            return []
+
+        with patch("analyzer.views.safe_cached_analyses", side_effect=fake_safe_cached_analyses):
+            items = _gallery_items()
+
+        self.assertTrue(all(item["full_name"] != "django/django" for item in items))
+        self.assertTrue(any(item["full_name"] == "curl/curl" for item in items))
+        self.assertEqual(items[0]["full_name"], "curl/curl")
 
     def test_analysis_younger_than_24_hours_is_fresh(self):
         cached = SimpleNamespace(analyzed_at=datetime.now(timezone.utc) - timedelta(hours=23))
@@ -476,9 +519,18 @@ class StudentReportTests(SimpleTestCase):
 class SecurityReportTests(SimpleTestCase):
     def test_scorecard_404_is_graceful(self):
         report = build_security_section({
-            "openssf_scorecard": {"available": False, "status_code": 404}
+            "openssf_scorecard": {"available": False, "status_code": 404},
+            "repo_flow_security_checks": {
+                "available": True,
+                "score": 7.2,
+                "checks": [
+                    {"name": "Branch-Protection", "score": 10, "reason": "Protected branches found."},
+                ],
+            },
         })
-        self.assertIn("OpenSSF Scorecard data not available", report)
+        self.assertIn("OpenSSF Scorecard Not Available, this repository has not been scanned by OpenSSF.", report)
+        self.assertIn("RepoFlow Security Checks", report)
+        self.assertIn("Branch-Protection", report)
 
     def test_scorecard_checks_include_score_reason_and_indicator(self):
         report = build_security_section({

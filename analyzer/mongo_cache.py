@@ -25,6 +25,14 @@ from analyzer.github_api import GitHubAPIError, parse_repo_url
 _CONNECTED_URI = None
 
 
+def mongo_storage_enabled() -> bool:
+    value = os.environ.get("MONGO_STORE_ENABLED", "true").strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
+        value = value[1:-1]
+    value = value.lower()
+    return value not in {"0", "false", "no", "off", "disabled", ""}
+
+
 class RepoAnalysisCache(Document):
     repo_url = StringField(required=True, unique=True)
     analyzed_at = DateTimeField()
@@ -54,6 +62,8 @@ def _mongo_db_name(uri: str) -> str:
 
 def connect_mongo() -> None:
     global _CONNECTED_URI
+    if not mongo_storage_enabled():
+        raise RuntimeError("MongoDB storage is disabled")
     mongo_uri = os.environ.get("MONGO_URI", "mongodb://localhost:27017/github-analyser").strip()
     if not mongo_uri:
         raise RuntimeError("MONGO_URI is empty")
@@ -116,12 +126,22 @@ def save_analysis_cache(
     security_summary: dict[str, Any],
     report_sections: dict[str, str],
     pdf_path: str = "",
-) -> RepoAnalysisCache:
+) -> RepoAnalysisCache | None:
+    if not mongo_storage_enabled():
+        print("MongoDB storage disabled; skipping save for this analysis.", flush=True)
+        return None
+
     connect_mongo()
     normalized_url = normalize_repo_url(repo_url)
     meta = snapshot.get("meta", {})
     owner = snapshot.get("owner", "")
     repo = snapshot.get("repo", "")
+    if not owner or not repo:
+        try:
+            owner, repo = parse_repo_url(normalized_url)
+        except Exception:
+            owner = owner or ""
+            repo = repo or ""
     analyzed_at = timezone.localtime(timezone.now()).replace(tzinfo=None)
     existing = RepoAnalysisCache.objects(repo_url=normalized_url).only(
         "is_featured", "show_in_gallery"

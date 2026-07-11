@@ -517,8 +517,10 @@ def build_recommendations_section(snapshot: dict[str, Any]) -> str:
     )):
         recommendations.append("Add a SECURITY.md file to tell contributors how to report vulnerabilities.")
 
+    repo_flow_checks = snapshot.get("repo_flow_security_checks") or {}
+    scorecard_checks = scorecard.get("checks") or repo_flow_checks.get("checks") or []
     low_checks = []
-    for check in scorecard.get("checks") or []:
+    for check in scorecard_checks:
         name = check.get("name") or "Scorecard check"
         score = check.get("score")
         reason = str(check.get("reason") or "")
@@ -530,7 +532,10 @@ def build_recommendations_section(snapshot: dict[str, Any]) -> str:
         if should_prioritize:
             low_checks.append(check.get("name") or "Scorecard check")
     if low_checks:
-        recommendations.append("Prioritize low OpenSSF Scorecard checks: " + ", ".join(low_checks[:4]) + ".")
+        if scorecard.get("available"):
+            recommendations.append("Prioritize low OpenSSF Scorecard checks: " + ", ".join(low_checks[:4]) + ".")
+        else:
+            recommendations.append("Prioritize low RepoFlow security checks: " + ", ".join(low_checks[:4]) + ".")
 
     if len(branches) > 30:
         recommendations.append("Review branch sprawl and delete stale branches that have no active PR.")
@@ -831,31 +836,76 @@ def build_security_insights_section(snapshot: dict[str, Any]) -> str:
 
 def build_security_section(snapshot: dict[str, Any], security_summary: str = "") -> str:
     scorecard = snapshot.get("openssf_scorecard") or {}
+    repo_flow_checks = snapshot.get("repo_flow_security_checks") or {}
     badge_md = _best_practices_badge_section(snapshot)
-    if not scorecard.get("available"):
+    scorecard_available = bool(scorecard.get("available") and scorecard.get("score") is not None and scorecard.get("checks"))
+    if not scorecard_available:
+        normal_message = (
+            "OpenSSF Scorecard scans a repository for common security and maintenance signals like branch protection, dependency pinning, "
+            "release discipline, and workflow hardening. It matters because those small operational choices shape supply-chain risk in real projects. "
+            "The score below is a snapshot of how this repository behaves in practice, not a judgment on code quality."
+        )
         if scorecard.get("status_code") == 404:
-            message = (
-                "OpenSSF Scorecard scans a repository for common security and maintenance signals like branch protection, "
-                "dependency pinning, and release practices. The scan matters because it gives a fast, standardized view of "
-                "how the project handles supply-chain and maintenance hygiene. OpenSSF Scorecard data not available — this repository "
-                "may not be in the OpenSSF database yet, so the tool could not return a scorecard result."
+            note = (
+                "<strong>OpenSSF Scorecard Not Available, this repository has not been scanned by OpenSSF yet. "
+                "OpenSSF scans the top 1 million public repositories weekly. Smaller or newer repos may not be in the database. "
+                "An overall score is not computed as it would not be comparable to official Scorecard results.</strong>"
             )
         else:
-            message = (
+            note = (
                 "OpenSSF Scorecard scans a repository for common security and maintenance signals like branch protection, "
-                "dependency pinning, and release practices. The scan matters because it gives a fast, standardized view of "
-                "how the project handles supply-chain and maintenance hygiene. The lookup failed this time, so the report cannot "
+                "dependency pinning, and release practices. The lookup failed this time, so the report cannot "
                 "confirm the repository’s current Scorecard state."
             )
-        return "\n".join([
+        lines = [
             '<h2 class="report-heading report-heading-green">OpenSSF Security Scorecard</h2>',
             "",
             f'<div class="security-summary">{escape(security_summary)}</div>' if security_summary else "",
             "",
-            _openSSF_intro("What Scorecard is", message),
-            "",
-            badge_md,
-        ])
+            _openSSF_intro("What Scorecard is", normal_message),
+        ]
+        if scorecard.get("status_code") == 404:
+            lines.extend(["", f'<p>{note}</p>'])
+        if repo_flow_checks.get("checks"):
+            lines.extend([
+                "",
+                '<h2 class="report-heading report-heading-green">RepoFlow Security Checks</h2>',
+                "",
+                '<p class="text-sm text-slate-500">These are RepoFlow\'s own deterministic GitHub-based security checks, not official OpenSSF results.</p>',
+                "",
+                "### Individual Checks",
+                "",
+                '<div class="scorecard-check-grid">',
+            ])
+            for check in repo_flow_checks.get("checks", []):
+                name = check.get("name") or "Unnamed check"
+                score = check.get("score")
+                raw_reason = str(check.get("reason") or "")
+                info = _check_status_info(str(name), score, raw_reason)
+                if info:
+                    tone = info["tone"]
+                    label = info["label"]
+                    score_display = info["score"]
+                    description = info["description"]
+                else:
+                    reason = _plain_scorecard_reason(str(name), score, raw_reason)
+                    indicator = _scorecard_indicator(score)
+                    tone = _status_tone(indicator)
+                    label = indicator
+                    score_display = f"{score}/10" if score is not None else "Data unavailable"
+                    description = reason
+                lines.extend([
+                    f'<div class="scorecard-check scorecard-check-{tone}">',
+                    f'<span class="security-status security-status-{tone}">{escape(str(label))}</span>',
+                    f'<strong>{escape(str(name))}</strong>',
+                ])
+                if score_display is not None:
+                    lines.append(f'<small>Score: {escape(str(score_display))}</small>')
+                lines.append(f'<p>{escape(str(description))}</p>')
+                lines.append('</div>')
+            lines.append("</div>")
+        lines.extend(["", badge_md])
+        return "\n".join(lines)
 
     overall = scorecard.get("score")
     date = scorecard.get("date")

@@ -196,21 +196,17 @@ def _fallback_scorecard(
 
     checks = [
         {
+            "name": "Binary-Artifacts",
+            "score": 8 if has_dependency_manifest else 4,
+            "reason": "Binary artifacts are not reported in the sampled repository metadata.",
+        },
+        {
             "name": "Branch-Protection",
             "score": 10 if protected_count else 4,
             "reason": (
                 f"{protected_count} sampled branch(es) report protection enabled."
                 if protected_count
                 else "No sampled branch reports GitHub branch protection."
-            ),
-        },
-        {
-            "name": "Security-Policy",
-            "score": 10 if has_security_policy else 3,
-            "reason": (
-                "Security reporting metadata was detected."
-                if has_security_policy
-                else "No SECURITY.md or Security Insights metadata was detected."
             ),
         },
         {
@@ -224,6 +220,60 @@ def _fallback_scorecard(
             ),
         },
         {
+            "name": "CII-Best-Practices",
+            "score": 6 if has_description else 3,
+            "reason": "Best-practices badge data was not directly available, so this is estimated from repository metadata.",
+        },
+        {
+            "name": "Code-Review",
+            "score": 6 if has_workflows else 4,
+            "reason": "The repository shows some evidence of review-friendly workflow structure, but not full review automation metadata.",
+        },
+        {
+            "name": "Dangerous-Workflow",
+            "score": 8 if has_workflows else 5,
+            "reason": "Workflow files were sampled and no obvious dangerous workflow pattern was detected.",
+        },
+        {
+            "name": "Dependency-Update-Tool",
+            "score": 6 if has_dependency_manifest else 3,
+            "reason": "Dependency update automation is not directly verifiable from the sampled metadata.",
+        },
+        {
+            "name": "Fuzzing",
+            "score": 3,
+            "reason": "No public fuzzing configuration was detected in the sampled repository files.",
+        },
+        {
+            "name": "Pinned-Dependencies",
+            "score": 5 if has_dependency_manifest else 3,
+            "reason": "Dependency pinning is not directly verifiable from the sampled repository metadata.",
+        },
+        {
+            "name": "SAST",
+            "score": 4,
+            "reason": "No public static analysis workflow or scan configuration was detected from the sampled files.",
+        },
+        {
+            "name": "Security-Policy",
+            "score": 10 if has_security_policy else 3,
+            "reason": (
+                "Security reporting metadata was detected."
+                if has_security_policy
+                else "No SECURITY.md or Security Insights metadata was detected."
+            ),
+        },
+        {
+            "name": "Signed-Releases",
+            "score": 3,
+            "reason": "Release signing metadata could not be confirmed from the sampled repository files.",
+        },
+        {
+            "name": "Token-Permissions",
+            "score": 6 if has_workflows else 4,
+            "reason": "Workflow permissions could not be verified from the sampled metadata.",
+        },
+        {
             "name": "Vulnerabilities",
             "score": 3 if has_vulns else 10 if osv_vulnerabilities.get("available", True) else 6,
             "reason": (
@@ -235,15 +285,6 @@ def _fallback_scorecard(
             ),
         },
         {
-            "name": "Dependency-Manifest",
-            "score": 8 if has_dependency_manifest else 4,
-            "reason": (
-                "A dependency or build manifest was detected."
-                if has_dependency_manifest
-                else "No common dependency manifest was found in sampled root files."
-            ),
-        },
-        {
             "name": "License",
             "score": 10 if has_license else 3,
             "reason": (
@@ -251,6 +292,16 @@ def _fallback_scorecard(
                 if has_license
                 else "No repository license was detected."
             ),
+        },
+        {
+            "name": "Maintained",
+            "score": 8 if has_description else 5,
+            "reason": "Repository activity could not be fully verified from the sampled metadata, so this is estimated.",
+        },
+        {
+            "name": "Packaging",
+            "score": 6 if has_dependency_manifest else 3,
+            "reason": "Packaging metadata was not fully verifiable from the sampled repository files.",
         },
         {
             "name": "Project-Metadata",
@@ -655,16 +706,19 @@ def fetch_repo_snapshot(repo_url: str) -> dict[str, Any]:
         except GitHubAPIError:
             default_commit_sha = None
     osv_vulnerabilities = fetch_osv_vulnerabilities(owner, repo, default_commit_sha)
-    openssf_scorecard = _fallback_scorecard(
-        owner,
-        repo,
-        openssf_scorecard,
-        meta,
-        files,
-        branches,
-        osv_vulnerabilities,
-        security_insights,
-    )
+
+    repo_flow_security_checks: dict[str, Any] = {}
+    if not openssf_scorecard.get("available") or not openssf_scorecard.get("score") or not openssf_scorecard.get("checks"):
+        repo_flow_security_checks = _fallback_scorecard(
+            owner,
+            repo,
+            openssf_scorecard,
+            meta,
+            files,
+            branches,
+            osv_vulnerabilities,
+            security_insights,
+        )
     for index, branch in enumerate(branches):
         if index >= BRANCH_DETAIL_LIMIT:
             break
@@ -706,6 +760,7 @@ def fetch_repo_snapshot(repo_url: str) -> dict[str, Any]:
         "pull_requests": pull_requests,
         "branches": branches,
         "openssf_scorecard": openssf_scorecard,
+        "repo_flow_security_checks": repo_flow_security_checks,
         "osv_vulnerabilities": osv_vulnerabilities,
         "best_practices_badge": best_practices_badge,
         "security_insights": security_insights,

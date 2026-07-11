@@ -22,8 +22,10 @@ from analyzer.mongo_cache import (
     cached_markdown,
     connect_mongo,
     get_cached_analysis,
+    mongo_storage_enabled,
     normalize_repo_url,
     safe_cached_analyses,
+    save_analysis_cache,
 )
 from .crew.crew import run_analysis_result
 
@@ -73,16 +75,27 @@ def _gallery_item(analysis: RepoAnalysisCache) -> dict:
     openssf_sections = analysis.openssf_sections or {}
     scorecard = openssf_sections.get("scorecard") or {}
     scorecard_display = _scorecard_display(scorecard)
+    owner = analysis.owner or ""
+    repo_name = analysis.repo_name or ""
+    if not owner or not repo_name:
+        try:
+            owner, repo_name = parse_repo_url(analysis.repo_url)
+        except Exception:
+            owner = owner or ""
+            repo_name = repo_name or ""
+    report_url = analysis.repo_url
+    if owner and repo_name:
+        try:
+            report_url = reverse("cached_report", kwargs={"owner": owner, "repo_name": repo_name})
+        except Exception:
+            report_url = analysis.repo_url
     return {
-        "full_name": f"{analysis.owner}/{analysis.repo_name}",
-        "owner": analysis.owner,
-        "repo": analysis.repo_name,
+        "full_name": f"{owner}/{repo_name}" if owner and repo_name else analysis.repo_url,
+        "owner": owner,
+        "repo": repo_name,
         "repo_url": analysis.repo_url,
         "display_url": analysis.repo_url.replace("https://", ""),
-        "report_url": reverse(
-            "cached_report",
-            kwargs={"owner": analysis.owner, "repo_name": analysis.repo_name},
-        ),
+        "report_url": report_url,
         "is_featured": bool(getattr(analysis, "is_featured", False)),
         "scorecard_score": scorecard_display["value"],
         "scorecard_label": scorecard_display["label"],
@@ -98,15 +111,26 @@ def _gallery_item(analysis: RepoAnalysisCache) -> dict:
     }
 
 
+def _is_disallowed_gallery_repo(analysis: RepoAnalysisCache) -> bool:
+    owner = analysis.owner or ""
+    repo_name = analysis.repo_name or ""
+    if not owner or not repo_name:
+        try:
+            owner, repo_name = parse_repo_url(analysis.repo_url)
+        except Exception:
+            return False
+    return owner.lower() == "django" and repo_name.lower() == "django"
+
+
 def _gallery_items() -> list[dict]:
-    real_analyses = safe_cached_analyses(limit=6, is_featured=False)
+    real_analyses = [analysis for analysis in safe_cached_analyses(limit=12, is_featured=False) if not _is_disallowed_gallery_repo(analysis)]
     if len(real_analyses) >= 6:
         return [_gallery_item(analysis) for analysis in real_analyses[:6]]
 
     featured_needed = 6 - len(real_analyses)
-    featured_analyses = safe_cached_analyses(limit=featured_needed, is_featured=True)
+    featured_analyses = [analysis for analysis in safe_cached_analyses(limit=12, is_featured=True) if not _is_disallowed_gallery_repo(analysis)]
     analyses = [*real_analyses, *featured_analyses]
-    return [_gallery_item(analysis) for analysis in analyses]
+    return [_gallery_item(analysis) for analysis in analyses[:6]]
 
 
 def _safe_gallery_items() -> list[dict]: 
@@ -325,7 +349,25 @@ def _render_markdown_report(repo_url: str) -> tuple[str, str]:
         extensions=["tables", "fenced_code", "nl2br"],
         # handles branch tables, f_c->code blocks, nl2br turns newlines into <br> tags for better formatting
     )
-    print("Skipping MongoDB save for user-submitted analysis.", flush=True)
+
+    if mongo_storage_enabled():
+        try:
+            save_analysis_cache(
+                normalized_url,
+                result.get("snapshot", {}),
+                result.get("health", {}),
+                {
+                    "markdown": md_report,
+                    "html": html_report,
+                    "branch_count": (result.get("sections") or {}).get("branch_count", 0),
+                },
+            )
+            print("Saved analysis to MongoDB.", flush=True)
+        except Exception as exc:
+            print(f"MongoDB save failed: {exc}", flush=True)
+    else:
+        print("MongoDB storage disabled; skipping save for user-submitted analysis.", flush=True)
+
     print("Analysis completed.", flush=True)
     return md_report, html_report
 

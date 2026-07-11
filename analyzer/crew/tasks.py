@@ -16,7 +16,8 @@ def _compact_check(check: dict) -> dict:
 
 def security_task(repo_url: str, snapshot: dict) -> Task:
     scorecard = snapshot.get("openssf_scorecard") or {}
-    checks = scorecard.get("checks") or []
+    repo_flow = snapshot.get("repo_flow_security_checks") or {}
+    checks = scorecard.get("checks") or repo_flow.get("checks") or []
     scored_checks = [check for check in checks if isinstance(check.get("score"), (int, float))]
     weak_checks = sorted(scored_checks, key=lambda item: item.get("score", 10))[:4]
     strong_checks = sorted(scored_checks, key=lambda item: item.get("score", 0), reverse=True)[:2]

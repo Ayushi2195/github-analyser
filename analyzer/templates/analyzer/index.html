@@ -61,25 +61,25 @@
                                 <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
                             </svg>
                             <div>
-                                <p class="text-sm font-bold text-slate-900">Analyzing repository…</p>
-                                <p class="text-xs text-slate-500">This usually takes 30–90 seconds</p>
+                                <p class="text-sm font-medium text-slate-900">Analyzing repository…</p>
+                                <p class="text-sm font-medium text-slate-500">This usually takes 30-90 seconds</p>
                             </div>
                         </div>
                         <div class="space-y-2">
-                            <div id="step1" class="flex items-center gap-2.5 rounded-xl px-3 py-2 bg-indigo-50/50 text-xs font-semibold text-indigo-800">
-                                <span class="step-icon h-5 w-5 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[10px]">1</span>
+                            <div id="step1" class="flex items-center gap-3 rounded-xl px-4 py-3 bg-indigo-50/50 text-sm font-medium text-indigo-800">
+                                <span class="step-icon h-6 w-6 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs">1</span>
                                 Fetching GitHub data...
                             </div>
-                            <div id="step2" class="flex items-center gap-2.5 rounded-xl px-3 py-2 bg-slate-50 text-xs font-semibold text-slate-400">
-                                <span class="step-icon h-5 w-5 rounded-full bg-slate-200 flex items-center justify-center text-[10px]">2</span>
+                            <div id="step2" class="flex items-center gap-3 rounded-xl px-4 py-3 bg-slate-50 text-sm font-medium text-slate-400">
+                                <span class="step-icon h-6 w-6 rounded-full bg-slate-200 flex items-center justify-center text-xs">2</span>
                                 Running OpenSSF security analysis...
                             </div>
-                            <div id="step3" class="flex items-center gap-2.5 rounded-xl px-3 py-2 bg-slate-50 text-xs font-semibold text-slate-400">
-                                <span class="step-icon h-5 w-5 rounded-full bg-slate-200 flex items-center justify-center text-[10px]">3</span>
+                            <div id="step3" class="flex items-center gap-3 rounded-xl px-4 py-3 bg-slate-50 text-sm font-medium text-slate-400">
+                                <span class="step-icon h-6 w-6 rounded-full bg-slate-200 flex items-center justify-center text-xs">3</span>
                                 Running CrewAI agents...
                             </div>
-                            <div id="step4" class="flex items-center gap-2.5 rounded-xl px-3 py-2 bg-slate-50 text-xs font-semibold text-slate-400">
-                                <span class="step-icon h-5 w-5 rounded-full bg-slate-200 flex items-center justify-center text-[10px]">4</span>
+                            <div id="step4" class="flex items-center gap-3 rounded-xl px-4 py-3 bg-slate-50 text-sm font-medium text-slate-400">
+                                <span class="step-icon h-6 w-6 rounded-full bg-slate-200 flex items-center justify-center text-xs">4</span>
                                 Building report...
                             </div>
                         </div>
@@ -444,7 +444,7 @@
                     </div>
                 </div>
                 <div class="flex items-center gap-2.5">
-                    <a href="{% url 'download_pdf' %}?repo_url={{ repo_url|urlencode }}" class="inline-flex items-center justify-center gap-2 rounded-xl bg-white text-slate-900 font-semibold px-4 py-2 hover:bg-slate-50 shadow-sm transition-all active:scale-[0.98] text-xs">
+                    <a href="{% url 'download_pdf' %}?repo_url={{ repo_url|urlencode }}" download class="inline-flex items-center justify-center gap-2 rounded-xl bg-white text-slate-900 font-semibold px-4 py-2 hover:bg-slate-50 shadow-sm transition-all active:scale-[0.98] text-xs">
                         <svg class="w-3.5 h-3.5 text-slate-900" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M8 12l4 4m0 0l4-4m-4 4V4"/></svg>
                         <span>Download PDF</span>
                     </a>
@@ -518,6 +518,35 @@
     }
 
     window.addEventListener('scroll', updateActiveNav, { passive: true });
+
+    // If the server rendered a report on this page, show the loading panel briefly
+    // with all steps marked complete, then reveal the report to the user.
+    document.addEventListener('DOMContentLoaded', () => {
+        const root = document.getElementById('pageRoot');
+        if (!root) return;
+        if (root.dataset.hasReport === 'true') {
+            const loading = document.getElementById('loadingPanel');
+            if (loading) loading.classList.remove('hidden');
+            const steps = ['step1','step2','step3','step4'];
+            steps.forEach((id) => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                const icon = el.querySelector('.step-icon');
+                el.className = 'flex items-center gap-3 rounded-xl px-4 py-3 bg-emerald-50 text-sm font-medium text-emerald-700';
+                if (icon) {
+                    icon.className = 'step-icon h-6 w-6 rounded-full bg-emerald-500 text-white flex items-center justify-center text-xs';
+                    icon.textContent = '✓';
+                }
+            });
+            // Short delay so the transition is visible, then hide loader and scroll to report
+            setTimeout(() => {
+                const loadingEl = document.getElementById('loadingPanel');
+                if (loadingEl) loadingEl.classList.add('hidden');
+                const report = document.getElementById('report');
+                if (report) report.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }, 500);
+        }
+    });
     window.addEventListener('resize', updateActiveNav);
     updateActiveNav();
 
